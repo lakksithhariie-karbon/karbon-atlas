@@ -178,8 +178,8 @@ importers:
   packages/configurator-ui:
     dependencies:
       '@cloudflare/kumo':
-        specifier: ^2.17.0
-        version: 2.17.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
+        specifier: ^2.18.0
+        version: 2.18.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
       '@gadgets/error-reporting':
         specifier: workspace:*
         version: link:../error-reporting
@@ -371,8 +371,8 @@ importers:
         version: 4.6.7
     devDependencies:
       '@cloudflare/kumo':
-        specifier: ^2.17.0
-        version: 2.17.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
+        specifier: ^2.18.0
+        version: 2.18.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
       '@cloudflare/vitest-plugin':
         specifier: 'catalog:'
         version: 1.8.2(@cloudflare/workers-types@5.20261115.1)(@types/node@26.1.0)(vitest@5.1.0)
@@ -951,8 +951,8 @@ importers:
         version: 1.0.2
     devDependencies:
       '@cloudflare/kumo':
-        specifier: ^2.17.0
-        version: 2.17.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
+        specifier: ^2.18.0
+        version: 2.18.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
       '@cloudflare/vitest-plugin':
         specifier: 'catalog:'
         version: 1.8.2(@cloudflare/workers-types@5.20261115.1)(@types/node@26.1.0)(vitest@5.1.0)
@@ -1418,8 +1418,8 @@ importers:
         version: 14.11.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
     devDependencies:
       '@cloudflare/kumo':
-        specifier: ^2.17.0
-        version: 2.17.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
+        specifier: ^2.18.0
+        version: 2.18.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
       '@gadgets/scripts':
         specifier: workspace:*
         version: link:../../scripts
@@ -1573,8 +1573,8 @@ importers:
   packages/workshop-frontend:
     dependencies:
       '@cloudflare/kumo':
-        specifier: ^2.17.0
-        version: 2.17.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
+        specifier: ^2.18.0
+        version: 2.18.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
       '@codemirror/commands':
         specifier: ^6.11.1
         version: 6.11.1
@@ -1954,8 +1954,8 @@ packages:
     resolution: {integrity: sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/runtime@8.0.8':
-    resolution: {integrity: sha512-dEu8nGlRqjsJsvviUUoSMfcRHpwomCiRlXsc2mPfJ79+ffTpDm+JtfUtTMzUrqCApHQnCsVPD3gT1ZT8RgBRCQ==}
+  '@babel/runtime@8.1.0':
+    resolution: {integrity: sha512-MQye/pU7gzXerMzlhScFNH1u4Je6rR8cqJWSgAfD+rIwbbtwG8tVDegoI7sWfcXkfVRW09G7vk2vjxGIuKFfwg==}
 
   '@babel/template@7.29.7':
     resolution: {integrity: sha512-puq+Gf35oI24FeN11LkoUQFqv9uwNeWpxXZi/Ji3rRIoKAzKnxRaZ+Gkj0vKS9ZCiTESfng1N9LyOyXvo+m+Gg==}
@@ -2002,8 +2002,8 @@ packages:
   '@cloudflare/config@0.30.2':
     resolution: {integrity: sha512-YTasjo8Kvfn3SlVs5gHZ6fy73BNQafY2Y8aosasicO8CTRVj2h8K7h+IJnjHK+tzM00Qi96VcOCfefCNLuMauw==}
 
-  '@cloudflare/kumo@2.17.0':
-    resolution: {integrity: sha512-DG0z7W7BGLRpEQ4eqpocIpAwEatcicrbUqu4p05W/BUk5BPw1b/tiNfbdfFGuAEiUxFFksUGtShulhkSTJdjIg==}
+  '@cloudflare/kumo@2.18.0':
+    resolution: {integrity: sha512-GC1m1Sw0vg5aEalbnnqD8alrCRkCAFa30ZV62AeV3lZUrO6MWAhxRdVejcZOTpiDUZ8a2XcgkW1We1cNTIGC2w==}
     hasBin: true
     peerDependencies:
       '@phosphor-icons/react': ^2.1.10
@@ -3175,32 +3175,32 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@shikijs/core@4.5.0':
-    resolution: {integrity: sha512-6CIgwq+bt2JZ3OSjb/nBkkwEf/CfpHcbam+Mg5Pllco7HAGRQ2/EFhZrrJtbyNTgKwknfVS+llsXGygiDGwJWw==}
+  '@shikijs/core@4.6.0':
+    resolution: {integrity: sha512-bfd4OKgvoyXYiYmMRuleA656P4V7M/Du9lcTl38Ngm6KszMj7bq4J1IGZwSYR4c95Tv5UQALtYNWUwaI9UT3xw==}
     engines: {node: '>=20'}
 
-  '@shikijs/engine-javascript@4.5.0':
-    resolution: {integrity: sha512-Ed6UdEj84LyYkwnxM5CvSMWAD+id9ExTYri0/+x41U9zrgNifPSS9lZm0JqBP0VfYI8yr8tY5nbNq9+p9R0kFA==}
+  '@shikijs/engine-javascript@4.6.0':
+    resolution: {integrity: sha512-K0oqxFoL+kEMdz89mHLFO15Tsbv3kFZ6WR1cXZKMvLSc+oqaM00A6pyga1qSeXB22dP0tTiSApRcGBaKWsEccg==}
     engines: {node: '>=20'}
 
-  '@shikijs/engine-oniguruma@4.5.0':
-    resolution: {integrity: sha512-dKVmbJecVdB9recl8a/CU4jdpNXyjJQrIcesIkpS70s5HS02ohpnCSpMUbotPnEUzbAcLQ+S4hwZYbkBBiTcJw==}
+  '@shikijs/engine-oniguruma@4.6.0':
+    resolution: {integrity: sha512-aggd6Q7SuJOXNnsUbfG2XesxBJKBMAw/PDTUo9PyRjMaaJJ2dNrI+q0C+25ARXAK9yLHAlwxc9oRT2u68YKZ7w==}
     engines: {node: '>=20'}
 
-  '@shikijs/langs@4.5.0':
-    resolution: {integrity: sha512-wwBTqwduXSz0X4v9Qa2EWeFaYJEw1clCncWjoRNQRbVDu3SPRTRWucnouYapKj3b8Q+sk/41Vbc4B5c8nuYzLA==}
+  '@shikijs/langs@4.6.0':
+    resolution: {integrity: sha512-1yMEX3oCVV54LUq/ovfpRkDQoYDkcvjSWFFa/YLUDMiSoRzMi2uxLJYbv41ahT8Lu9lFMaa7hecd3Q39trqUyg==}
     engines: {node: '>=20'}
 
-  '@shikijs/primitive@4.5.0':
-    resolution: {integrity: sha512-UM7ShlA8oz0OWxLLO8BmO9Ip6fVqdkt8yF0EH7nOCqHfrx1eEAzF0ZUVK7L+I8NEgeu1PEWSRlxaiPPeCb4iDg==}
+  '@shikijs/primitive@4.6.0':
+    resolution: {integrity: sha512-c54+TQEo9ToqgfL/AU8FpjnV09+GA9Oa7M5ROkkXteZfp5XzpAJGXjjvZQFQioJOwm/w/6Z3lIzQstAkl8coag==}
     engines: {node: '>=20'}
 
-  '@shikijs/themes@4.5.0':
-    resolution: {integrity: sha512-zGb87H3UBbpuI4yoh5UguB1XbU+2BDU3kflM7UfZ+Cy2hWo9lBtqjSVK20gmLY6ukYl040hAypGXMgud9vul8Q==}
+  '@shikijs/themes@4.6.0':
+    resolution: {integrity: sha512-qHAVAs80RiGD+IRuH9G+JPDOEc9A/kHsng4EzCUCwB9bLzW6Z0y9WETh2YyCcADJBmfrIaJ1Jp7KBNP6FHkgtQ==}
     engines: {node: '>=20'}
 
-  '@shikijs/types@4.5.0':
-    resolution: {integrity: sha512-drtPrtD8N0DENyD2cyt6Ajy+IWsiCLgMxODwLTpvH1UsN6a9jf90tNTPjqwHvA+0Lzu9e0txk8DjfqH1p9UJRw==}
+  '@shikijs/types@4.6.0':
+    resolution: {integrity: sha512-+ENG1adsKt/X7cRYw1Nl7BEpBmPOjmQ7bR/eGmHuMlT8gtOFf3KEi5l31DJYyAWhW6Y6bjP1plU7FmaxWGENFw==}
     engines: {node: '>=20'}
 
   '@shikijs/vscode-textmate@10.1.0':
@@ -4113,12 +4113,12 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
-  d3-array@3.2.4:
-    resolution: {integrity: sha512-tdQAmyA18i4J7wprpYq8ClcxZy3SC31QMeByyCFyRt7BVHdREQZ5lpzoe5mFEYZUWe+oq8HBvk9JjpibyEV4Jg==}
+  d3-array@3.2.5:
+    resolution: {integrity: sha512-Th8qGXoBalmWsstpkuhmBuTsBQIFqYOJtjlBvNVvBfJ8E3uYusBUwUR8HU20U0qKKQkgCvKyR1YjiozWadk5QA==}
     engines: {node: '>=12'}
 
-  d3-geo@3.1.1:
-    resolution: {integrity: sha512-637ln3gXKXOwhalDzinUgY83KzNWZRKbYubaG+fGVuc/dxO64RRljtCTnf5ecMyE1RIdtqpkVcq0IbtU2S8j2Q==}
+  d3-geo@3.1.2:
+    resolution: {integrity: sha512-5R8ZgDQorIxmauv7R6gpE/ndz+Z0qAZssigq0aXFdvPHdY41RqtW02jrRUQAL724NdPABYXo1+gQEGBBr7uKNg==}
     engines: {node: '>=12'}
 
   data-uri-to-buffer@4.0.1:
@@ -4473,8 +4473,8 @@ packages:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
 
-  hast-util-to-html@9.0.5:
-    resolution: {integrity: sha512-OguPdidb+fbHQSU4Q4ZiLKnzWo8Wwsf5bZfbvu7//a9oTYoqD/fWpe96NuHkoS9h0ccGOTe0C4NGXdtS0iObOw==}
+  hast-util-to-html@9.0.6:
+    resolution: {integrity: sha512-1SZUxCN3TtJAE7e2BQN2MBHsoZ1gnmi9GoCP5Di59CSWptIezSAW09yDZyVbanb78V9eCwrKqdQsjtfVTxYHWA==}
 
   hast-util-to-jsx-runtime@2.3.6:
     resolution: {integrity: sha512-zl6s8LwNyo1P9uw+XJGvZtdFF1GdAkOg8ujOw+4Pyb76874fLps4ueHXDhXWdk6YHQ6OgUtinliG7RsYvCbbBg==}
@@ -5332,8 +5332,8 @@ packages:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
 
-  shiki@4.5.0:
-    resolution: {integrity: sha512-OcRW72ngQvc+MSVWBRIovC/BTW589iUE/Vxav7VeM4RcY9MUjqB+IR6ILG1k9nuW6LiG/nct9uma4/MBtnZbmQ==}
+  shiki@4.6.0:
+    resolution: {integrity: sha512-imjLsVHgPuWhvpU3P+zOekvMYqnel7QmKsFC4Sn0fCuAvaaalBsxwKEsrU8Ko5BdFnZA6Go/8a0RzahS634UgA==}
     engines: {node: '>=20'}
 
   simple-concat@1.0.1:
@@ -6238,7 +6238,7 @@ snapshots:
 
   '@babel/runtime@7.29.7': {}
 
-  '@babel/runtime@8.0.8': {}
+  '@babel/runtime@8.1.0': {}
 
   '@babel/template@7.29.7':
     dependencies:
@@ -6265,7 +6265,7 @@ snapshots:
 
   '@base-ui/react@1.9.0(@date-fns/tz@1.5.0)(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@babel/runtime': 8.0.8
+      '@babel/runtime': 8.1.0
       '@base-ui/utils': 0.5.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@floating-ui/react-dom': 2.1.9(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@floating-ui/utils': 0.2.12
@@ -6279,7 +6279,7 @@ snapshots:
 
   '@base-ui/utils@0.5.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@babel/runtime': 8.0.8
+      '@babel/runtime': 8.1.0
       '@floating-ui/utils': 0.2.12
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
@@ -6294,19 +6294,19 @@ snapshots:
     dependencies:
       zod: 4.6.6
 
-  '@cloudflare/kumo@2.17.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)':
+  '@cloudflare/kumo@2.18.0(@date-fns/tz@1.5.0)(@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)':
     dependencies:
       '@base-ui/react': 1.9.0(@date-fns/tz@1.5.0)(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@phosphor-icons/react': 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@shikijs/langs': 4.5.0
-      '@shikijs/themes': 4.5.0
+      '@shikijs/langs': 4.6.0
+      '@shikijs/themes': 4.6.0
       cn: 0.4.0
-      d3-geo: 3.1.1
+      d3-geo: 3.1.2
       motion: 12.43.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react: 19.3.1
       react-day-picker: 9.14.0(react@19.3.1)
       react-dom: 19.3.1(react@19.3.1)
-      shiki: 4.5.0
+      shiki: 4.6.0
       use-sync-external-store: 1.7.0(react@19.3.1)
     optionalDependencies:
       zod: 4.6.7
@@ -7273,40 +7273,40 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.3':
     optional: true
 
-  '@shikijs/core@4.5.0':
+  '@shikijs/core@4.6.0':
     dependencies:
-      '@shikijs/primitive': 4.5.0
-      '@shikijs/types': 4.5.0
+      '@shikijs/primitive': 4.6.0
+      '@shikijs/types': 4.6.0
       '@shikijs/vscode-textmate': 10.1.0
       '@types/hast': 3.0.5
-      hast-util-to-html: 9.0.5
+      hast-util-to-html: 9.0.6
 
-  '@shikijs/engine-javascript@4.5.0':
+  '@shikijs/engine-javascript@4.6.0':
     dependencies:
-      '@shikijs/types': 4.5.0
+      '@shikijs/types': 4.6.0
       '@shikijs/vscode-textmate': 10.1.0
       oniguruma-to-es: 4.3.6
 
-  '@shikijs/engine-oniguruma@4.5.0':
+  '@shikijs/engine-oniguruma@4.6.0':
     dependencies:
-      '@shikijs/types': 4.5.0
+      '@shikijs/types': 4.6.0
       '@shikijs/vscode-textmate': 10.1.0
 
-  '@shikijs/langs@4.5.0':
+  '@shikijs/langs@4.6.0':
     dependencies:
-      '@shikijs/types': 4.5.0
+      '@shikijs/types': 4.6.0
 
-  '@shikijs/primitive@4.5.0':
+  '@shikijs/primitive@4.6.0':
     dependencies:
-      '@shikijs/types': 4.5.0
+      '@shikijs/types': 4.6.0
       '@shikijs/vscode-textmate': 10.1.0
       '@types/hast': 3.0.5
 
-  '@shikijs/themes@4.5.0':
+  '@shikijs/themes@4.6.0':
     dependencies:
-      '@shikijs/types': 4.5.0
+      '@shikijs/types': 4.6.0
 
-  '@shikijs/types@4.5.0':
+  '@shikijs/types@4.6.0':
     dependencies:
       '@shikijs/vscode-textmate': 10.1.0
       '@types/hast': 3.0.5
@@ -8101,13 +8101,13 @@ snapshots:
 
   csstype@3.2.3: {}
 
-  d3-array@3.2.4:
+  d3-array@3.2.5:
     dependencies:
       internmap: 2.0.3
 
-  d3-geo@3.1.1:
+  d3-geo@3.1.2:
     dependencies:
-      d3-array: 3.2.4
+      d3-array: 3.2.5
 
   data-uri-to-buffer@4.0.1: {}
 
@@ -8457,7 +8457,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hast-util-to-html@9.0.5:
+  hast-util-to-html@9.0.6:
     dependencies:
       '@types/hast': 3.0.5
       '@types/unist': 3.0.3
@@ -9597,14 +9597,14 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  shiki@4.5.0:
+  shiki@4.6.0:
     dependencies:
-      '@shikijs/core': 4.5.0
-      '@shikijs/engine-javascript': 4.5.0
-      '@shikijs/engine-oniguruma': 4.5.0
-      '@shikijs/langs': 4.5.0
-      '@shikijs/themes': 4.5.0
-      '@shikijs/types': 4.5.0
+      '@shikijs/core': 4.6.0
+      '@shikijs/engine-javascript': 4.6.0
+      '@shikijs/engine-oniguruma': 4.6.0
+      '@shikijs/langs': 4.6.0
+      '@shikijs/themes': 4.6.0
+      '@shikijs/types': 4.6.0
       '@shikijs/vscode-textmate': 10.1.0
       '@types/hast': 3.0.5
 
