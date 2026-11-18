@@ -1746,8 +1746,8 @@ importers:
   scripts:
     dependencies:
       '@cloudflare/config':
-        specifier: 0.30.2
-        version: 0.30.2
+        specifier: 0.32.0
+        version: 0.32.0
       aws4fetch:
         specifier: ^1.0.20
         version: 1.0.20
@@ -1999,8 +1999,8 @@ packages:
   '@blazediff/core@1.10.0':
     resolution: {integrity: sha512-AOQff0zgR7cGsZL+4E7hVkmujoPUpm0J9xzWGWZj5wCjd3gmxESXAPfKyuzs93VdpQNFhHlBhfOjrcZ+XTERtQ==}
 
-  '@cloudflare/config@0.30.2':
-    resolution: {integrity: sha512-YTasjo8Kvfn3SlVs5gHZ6fy73BNQafY2Y8aosasicO8CTRVj2h8K7h+IJnjHK+tzM00Qi96VcOCfefCNLuMauw==}
+  '@cloudflare/config@0.32.0':
+    resolution: {integrity: sha512-Q/Gpu+PkyRXXE5KVsPzyjKul4ZF/uLB+28OVMRNlaBT5WgD3gLWoBK+XyoPA1uqp9FQ7Y0sIewoy04UCXlNDgw==}
 
   '@cloudflare/kumo@2.17.0':
     resolution: {integrity: sha512-DG0z7W7BGLRpEQ4eqpocIpAwEatcicrbUqu4p05W/BUk5BPw1b/tiNfbdfFGuAEiUxFFksUGtShulhkSTJdjIg==}
@@ -6290,7 +6290,7 @@ snapshots:
 
   '@blazediff/core@1.10.0': {}
 
-  '@cloudflare/config@0.30.2':
+  '@cloudflare/config@0.32.0':
     dependencies:
       zod: 4.6.6
 
