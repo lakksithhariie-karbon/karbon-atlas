@@ -89,3 +89,7 @@ IMPORTANT: This repository uses pnpm, not npm. Always use pnpm.
 - Cached Vite+ tasks strip undeclared environment variables. Declare output-affecting variables in `cache.env`; a path value does not fingerprint the external files it names.
 - Shared watchdog defaults include slower machines: keep the 15-minute total allowance so ordinary test commands work without special environment setup. Idle limits still catch silent hangs; use explicit overrides for runs needing more time. See [testing guidance](docs/testing.md).
 - Read [build-system guidance](docs/build-system.md) when changing task graphs, codegen, caching, or dev-server startup; [integration testing](docs/integration-testing.md) covers the workerd harness.
+
+## Fork workflow
+
+This checkout is Karbon Atlas, a downstream copy of Cloudflare OS. Before any git or GitHub action (branching, committing, pushing, PRs, upstream syncs), read `FORK_WORKFLOW.md`.
