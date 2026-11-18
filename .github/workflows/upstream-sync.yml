@@ -1,0 +1,117 @@
+# Karbon Atlas-only workflow (not part of upstream cloudflare/cloudflare-os). See FORK_WORKFLOW.md.
+#
+# Once a week, checks cloudflare/cloudflare-os for new commits on `main` and proposes them as a
+# pull request from the `upstream-sync` branch into this repo's `main`.
+#
+# Safety properties:
+#   - Never merges, never enables auto-merge, never deploys. A human merges the PR.
+#   - Never force-pushes. `upstream-sync` only fast-forwards to upstream's `main`; if a person
+#     added commits to it, the push is refused and the run fails instead of discarding them.
+#   - Never writes to `main`.
+#
+# Token: uses the `UPSTREAM_SYNC_TOKEN` secret when set, else the built-in GITHUB_TOKEN. Use the
+# secret, because GITHUB_TOKEN has two limits:
+#   1. It cannot push commits that change `.github/workflows/*`, so the run fails in any week where
+#      upstream edits a workflow.
+#   2. A PR it opens does not trigger other workflows, so CI does not run on the sync PR.
+# Secret: a fine-grained PAT scoped to this repo only, with Contents, Pull requests and Workflows
+# set to read and write.
+
+name: Upstream sync
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  propose:
+    # Never runs on the upstream repository itself.
+    if: github.repository != 'cloudflare/cloudflare-os'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTREAM_REPO: cloudflare/cloudflare-os
+      UPSTREAM_BRANCH: main
+      BASE_BRANCH: main
+      SYNC_BRANCH: upstream-sync
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch --no-tags upstream "+refs/heads/${UPSTREAM_BRANCH}:refs/remotes/upstream/${UPSTREAM_BRANCH}"
+
+      - name: Compare
+        id: compare
+        run: |
+          up="upstream/${UPSTREAM_BRANCH}"
+          behind=$(git rev-list --count "HEAD..${up}")
+          echo "behind=${behind}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse "${up}")" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short "${up}")" >> "$GITHUB_OUTPUT"
+          echo "### Upstream sync" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`${BASE_BRANCH}\` is ${behind} commit(s) behind \`${UPSTREAM_REPO}@${UPSTREAM_BRANCH}\`." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push sync branch (fast-forward only)
+        if: steps.compare.outputs.behind != '0'
+        run: git push origin "${{ steps.compare.outputs.sha }}:refs/heads/${SYNC_BRANCH}"
+
+      - name: Open or update pull request
+        if: steps.compare.outputs.behind != '0'
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+          BEHIND: ${{ steps.compare.outputs.behind }}
+          SHORT: ${{ steps.compare.outputs.short }}
+        run: |
+          up="upstream/${UPSTREAM_BRANCH}"
+          base=$(git merge-base HEAD "${up}")
+          {
+            echo "Proposes ${BEHIND} new commit(s) from [\`${UPSTREAM_REPO}@${UPSTREAM_BRANCH}\`](https://github.com/${UPSTREAM_REPO}/compare/${base}...${SHORT})."
+            echo
+            echo "> [!IMPORTANT]"
+            echo "> Merge with **Create a merge commit**. Squash or rebase breaks every later sync."
+            echo "> Nothing merges or deploys automatically."
+            echo
+            echo "### Review checklist"
+            echo "- [ ] CI passes (if it did not start, close and reopen this PR)"
+            echo "- [ ] \`pnpm run-local\` boots on this branch and the app loads on :8787"
+            echo "- [ ] Sensitive paths below reviewed"
+            echo
+            echo "### Sensitive paths touched"
+            sensitive=$(git diff --name-only "${base}" "${up}" -- \
+              '.github/' '*cloudflare.config.ts' '*wrangler.jsonc' 'scripts/release/' \
+              'pnpm-lock.yaml' 'package.json' 'pnpm-workspace.yaml' | head -60)
+            if [ -n "${sensitive}" ]; then echo '```'; echo "${sensitive}"; echo '```'; else echo "None."; fi
+            echo
+            echo "### Commits (newest first, up to 50)"
+            git log --no-merges --format='- %h %s' -n 50 "HEAD..${up}"
+            echo
+            echo "<sub>Opened by \`.github/workflows/upstream-sync.yml\`.</sub>"
+          } > body.md
+
+          title="Upstream sync: ${UPSTREAM_REPO}@${SHORT} (${BEHIND} commits)"
+          existing=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$SYNC_BRANCH" --base "$BASE_BRANCH" \
+            --state open --json number --jq '.[0].number // empty')
+          if [ -n "${existing}" ]; then
+            gh pr edit "${existing}" --repo "$GITHUB_REPOSITORY" --title "${title}" --body-file body.md
+            echo "Updated PR #${existing}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --head "$SYNC_BRANCH" --base "$BASE_BRANCH" \
+              --title "${title}" --body-file body.md
+            echo "Opened a new PR" >> "$GITHUB_STEP_SUMMARY"
+          fi

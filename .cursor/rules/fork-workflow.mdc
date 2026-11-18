@@ -1,0 +1,14 @@
+---
+description: Karbon Atlas git workflow - remotes, branches, PRs, upstream sync, production safety
+alwaysApply: true
+---
+
+This repo is a standalone copy of cloudflare/cloudflare-os (full history, not a GitHub fork). Follow @FORK_WORKFLOW.md for every git and GitHub
+action, and @AGENTS.md for code rules.
+
+Short form:
+- Push only to `origin` (lakksithhariie-karbon/karbon-atlas). `upstream` is fetch-only.
+- Work on `feat/`, `fix/`, `chore/` or `docs/` branches. Never commit to `main` or `upstream-sync`.
+- Open PRs into karbon-atlas `main`. Merge with merge commits only.
+- Never merge PRs, enable auto-merge or change repo settings unless the user asks.
+- The GitHub token is in `.secrets/.env`. Never print or commit it. Never create a root `.env`.
