@@ -104,6 +104,13 @@ Open that branch as a PR into `main`, merge it with a merge commit, then close t
 
 Same commands as the conflicts case: branch from `origin/main`, `git merge upstream/main`, PR.
 
+## Dependency updates
+
+- Dependabot is **off**: `.github/dependabot.yml` is deleted in Karbon Atlas.
+- Library upgrades arrive through the weekly upstream-sync PR, already tested by Cloudflare. Upgrading on our own would make our lockfile drift from upstream and conflict with every sync.
+- When upstream edits `.github/dependabot.yml`, the sync PR shows a modify/delete conflict. Resolve it by keeping the file deleted: `git rm .github/dependabot.yml`.
+- Upgrade a library ahead of upstream only for a security fix or a feature we need, on its own `chore/` branch.
+
 ## Production
 
 - Merging to `main` deploys nothing. No workflow in this repo deploys to production.
