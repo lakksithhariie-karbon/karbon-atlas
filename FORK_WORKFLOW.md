@@ -31,7 +31,7 @@ git remote set-url --push upstream DISABLED-read-only-upstream
 
 | Branch | Owner | Rule |
 |---|---|---|
-| `main` | Humans, through PRs | Protected: PR required (admins included), no force push, no deletion |
+| `main` | Changes land only through PRs (see "Who merges") | Protected: PR required (admins included), no force push, no deletion |
 | `feat/<topic>`, `fix/<topic>`, `chore/<topic>`, `docs/<topic>` | Whoever does the work | One topic per branch, branched from up-to-date `main` |
 | `upstream-sync` | `upstream-sync.yml` workflow | Bot-owned mirror of `upstream/main`. Never commit to it. |
 
@@ -58,7 +58,7 @@ Rules:
 
 ## Receiving upstream updates
 
-Upstream changes never arrive on their own. They arrive as a pull request that a person reviews and merges.
+Upstream changes never arrive on their own. They arrive as a pull request that someone reviews and merges by hand (see "Who merges").
 
 ### Automatic proposal (weekly)
 
@@ -118,17 +118,37 @@ Same commands as the conflicts case: branch from `origin/main`, `git merge upstr
 - A sync PR that adds a **new** upstream workflow file enables it on merge. If it is Cloudflare-internal, disable it in the Actions tab right after merging.
 - When production deployment is set up, deploy from a manual step (a `workflow_dispatch` workflow with a required approval environment, or a manual `wrangler deploy`). Never connect a deploy to pushes on `main`.
 
+## Who merges
+
+The project owner handles product. Claude Code handles the technical side: it owns the repo work and
+merges routine PRs itself. The owner granted this on 2026-11-18.
+
+| Change | Who merges |
+|---|---|
+| Setup, tooling, docs, CI, refactors with no user-visible effect | Claude Code, once checks pass |
+| Upstream-sync PRs | Claude Code, once checks pass, the local `pnpm run-local` test passes, and sensitive paths are reviewed |
+| Dependency housekeeping (security fixes, conflict resolution) | Claude Code, once checks pass |
+| Anything that changes what users see or how the product behaves | Owner approves first |
+| Anything that costs money (paid services, new API keys, usage-billed models) | Owner approves first |
+| Anything that touches production (deploys, prod secrets, domains) | Owner approves first |
+
+Merging rules for everyone:
+- Use **Create a merge commit** only.
+- Never enable auto-merge and never bypass branch protection.
+- A failed check blocks the merge. If the failure is a known flaky upstream test (same code passes on `main`), re-run it.
+
 ## Agent notes
 
 | Tool | Reads | Notes |
 |---|---|---|
-| Claude Code | `CLAUDE.md` (imports this file), `AGENTS.md` | Ask before pushing, opening PRs or merging unless the user said to |
+| Claude Code | `CLAUDE.md` (imports this file), `AGENTS.md` | Pushes topic branches, opens PRs and merges them according to "Who merges" |
 | Cursor | `AGENTS.md`, `.cursor/rules/fork-workflow.mdc` (always applied) | Same rules; the agent terminal uses the same credential helper |
 | Factory Droid | `AGENTS.md` (points here) | Same rules; run git from the repo root so the credential helper finds `.secrets/.env` |
 
 All agents:
 - Run `git status` and `git branch --show-current` before any git write.
 - Work on a topic branch, never on `main` or `upstream-sync`.
-- Never merge a PR, enable auto-merge, change branch protection, or touch repo settings unless the user asks in that conversation.
+- Cursor and Factory Droid: never merge a PR unless the user asks in that conversation.
+- Every agent: never enable auto-merge, change branch protection, or touch repo settings unless the user asks in that conversation.
 - Never push to `upstream` (it is disabled anyway) or open PRs against `cloudflare/cloudflare-os`.
 - Keep the dev server (`pnpm run-local`, port 8787) running; do not kill it to free the port for another task.
