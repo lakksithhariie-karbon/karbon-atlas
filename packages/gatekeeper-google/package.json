@@ -18,9 +18,9 @@
     "@gadgets/workshop-shared": "workspace:*",
     "capnweb": "catalog:",
     "capnweb-validate": "catalog:",
-    "jose": "^6.2.16",
+    "jose": "^6.2.17",
     "mimetext": "^3.0.28",
-    "postal-mime": "^4.2.0"
+    "postal-mime": "^4.2.1"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "catalog:",
