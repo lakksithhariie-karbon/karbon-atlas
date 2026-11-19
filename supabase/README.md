@@ -13,10 +13,10 @@ the leading letter means the name never needs quoting in SQL.
 
 | Schema | Holds | Status |
 |---|---|---|
-| `f01_engineering` | Engineering data, starting with Jira project AiA (`SPEND`) | Created, empty |
+| `f01_engineering` | Engineering data, starting with Jira project AiA (`SPEND`) | Jira tables and views |
 
-Raw source payloads and sync bookkeeping go in a separate private schema, not in the function
-schemas. That schema doesn't exist yet.
+Raw source payloads and sync bookkeeping live in the private `ingest` schema. The Jira sync
+function and its runbook are `supabase/functions/jira-sync/` and `supabase/docs/jira-pipeline-runbook.md`.
 
 ## Migrations
 
