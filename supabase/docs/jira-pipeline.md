@@ -35,17 +35,19 @@ exposed through the Data API, and `anon` / `authenticated` get no grants.
 |---|---|---|
 | `backfill` | Manual, re-invoked until it reports `done` | Page `project = SPEND ORDER BY key ASC` (100/page) with `fields=*all`; for each page also fetch full comments, worklogs and changelogs. Saves its page token after every page. |
 | `incremental` | `*/30 * * * *` | JQL `project = SPEND AND updated >= "<cursor − 15 min>" ORDER BY updated ASC`, the date formatted `yyyy-MM-dd HH:mm` in the Jira account's time zone (from `/myself`). Re-fetches comments, worklogs and changelogs of every returned issue. Cursor = max `updated` processed. |
-| `nightly` | `30 20 * * *` UTC (02:00 IST) | Refresh reference data (fields, dropdown options, statuses, issue types, priorities, link types, boards, sprints). List every issue id in SPEND (`fields=id`); set `deleted_at` on issues no longer returned, clear it on any that reappear. |
-| `rebuild` | Manual | Re-derive every clean table from `ingest` raw rows. No Jira calls. |
+| `nightly` | `30 20 * * *` UTC (02:00 IST) | Refresh reference data (fields, dropdown options, statuses, issue types, priorities, link types, boards, sprints) and every known account via `GET /rest/api/3/user/bulk` (emails stripped, names replaced when they differ). List every issue id in SPEND (`fields=id`). If that list is fewer than 90% of the live Supabase issues, mark nothing deleted and record a warning; otherwise set `deleted_at` on issues no longer returned. Always clear `deleted_at` on ids Jira returned. |
+| `rebuild` | Manual | Re-derive every clean table from `ingest` raw rows, including users from `user` reference rows. No Jira calls. |
 
 ## Reliability rules
 
-- **Lease lock** per job in `ingest.jira_sync_lock` (owner + expiry). A run that cannot take the lock exits with status `skipped`. Expired leases can be taken over.
-- **Bounded work**: stop starting new pages after ~100 s of wall clock (Free plan limit 150 s; CPU 2 s/request; 256 MB). Save progress, return `{ done: false }`.
-- **Idempotent**: every write is an upsert keyed by Jira id. Child sets per issue (comments, worklogs, links, attachments, sprint memberships) are replaced inside the issue's transaction, so deletions in Jira propagate.
+- **Lease lock** per job in `ingest.jira_sync_lock` (owner + expiry). A run that cannot take the lock exits with status `skipped`. Expired leases can be taken over. The incremental drain also takes the `rebuild` lease and skips that tick when a rebuild already holds it.
+- **Bounded work**: stop starting new pages after ~100 s of wall clock (Free plan limit 150 s; CPU 2 s/request; 256 MB). Save progress, return `{ done: false }`. A batch that fails or hits its statement timeout rolls back as a whole, including the cleaning-version stamp.
+- **Cleaning version**: `CURRENT_TRANSFORM_VERSION` in `supabase/functions/jira-sync/version.ts`. Bump it when a cleaning rule changes. Every clean-row write stamps that version on the raw issue in the same transaction. After an incremental tick finishes, the time left is used to re-clean raw issues still below the current version (no Jira calls). A partial incremental does not drain. Rebuild and drain lock the raw rows they read (`select … for update`, ordered by `issue_id`) inside that same transaction, so an incremental write cannot be overwritten by an older raw read.
+- **Idempotent**: every write is an upsert keyed by Jira id. Child sets per issue (comments, worklogs, links, attachments, sprint memberships) are replaced inside the issue's transaction, so deletions in Jira propagate. User rows written from an issue insert only and do not replace a stored name. The nightly user bulk, and a rebuild reading those `user` reference rows, replace `display_name`, `account_type`, `active`, and `time_zone` when the new value is distinct.
+- **Deletion guard**: before nightly marks anything deleted, compare the id count from Jira with the live issues in Supabase (`deleted_at is null`). Fewer than 90% and it marks nothing, still clears `deleted_at` on the returned ids, and stores a `deletion guard:` warning on the run. Exactly 90% does not trip.
 - **Rate limits**: at most 4 concurrent Jira requests; honor `Retry-After` on 429 and back off with jitter on 5xx; slow down when `x-ratelimit-remaining` < 20.
-- **Every run is logged** in `ingest.jira_sync_runs` (mode, start, end, status, counts, requests, error).
-- **Health**: `ingest.jira_sync_health` reports minutes since the last successful run per mode and `is_stale` (incremental > 120 min, nightly > 26 h).
+- **Every run is logged** in `ingest.jira_sync_runs` (mode, start, end, status, counts, requests, error, warning).
+- **Health**: `ingest.jira_sync_health` reports minutes since the last successful run per mode, `is_stale` (incremental > 120 min, nightly > 26 h), `outdated_issues` (raw rows below the published cleaning version), and `last_deletion_guard_at`.
 
 ## Jira API notes (from the inventory)
 
@@ -63,15 +65,15 @@ exposed through the Data API, and `anon` / `authenticated` get no grants.
 
 | Table | Key | Contents |
 |---|---|---|
-| `jira_issue_raw` | `issue_id` | `issue_key`, `payload jsonb` (search payload, `fields=*all`), `jira_updated_at`, `fetched_at`, `deleted_at` |
+| `jira_issue_raw` | `issue_id` | `issue_key`, `payload jsonb` (search payload, `fields=*all`), `jira_updated_at`, `fetched_at`, `deleted_at`, `transform_version` |
 | `jira_comment_raw` | `comment_id` | `issue_id`, `payload`, `fetched_at` |
 | `jira_worklog_raw` | `worklog_id` | `issue_id`, `payload`, `fetched_at` |
 | `jira_changelog_raw` | `history_id` | `issue_id`, `payload`, `fetched_at` |
-| `jira_reference_raw` | `(kind, ref_id)` | fields, field options, statuses, issue types, priorities, link types, boards, sprints, myself (time zone only) |
+| `jira_reference_raw` | `(kind, ref_id)` | fields, field options, statuses, issue types, priorities, link types, boards, sprints, users (no email), myself (time zone only) |
 | `jira_sync_state` | `mode` | `checkpoint jsonb`, `updated_at` |
-| `jira_sync_runs` | `run_id` | `mode`, `started_at`, `finished_at`, `status` (`ok` / `partial` / `skipped` / `error`), counts, `requests`, `error` |
+| `jira_sync_runs` | `run_id` | `mode`, `started_at`, `finished_at`, `status` (`ok` / `partial` / `skipped` / `error`), counts, `requests`, `error`, `warning` |
 | `jira_sync_lock` | `mode` | `owner uuid`, `locked_until` |
-| view `jira_sync_health` | | per mode: last success, minutes since, `is_stale` |
+| view `jira_sync_health` | | per mode: last success, minutes since, `is_stale`, plus `outdated_issues` and `last_deletion_guard_at` |
 
 Raw rows drop nothing except emails: strip every `emailAddress` key before storing.
 
