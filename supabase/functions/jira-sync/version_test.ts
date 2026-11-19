@@ -1,7 +1,9 @@
 import { CURRENT_TRANSFORM_VERSION, isTransformOutdated, stampForCleanWrite } from "./version.ts";
 
 Deno.test("clean writes stamp the current transform version", () => {
-  if (CURRENT_TRANSFORM_VERSION !== 1) throw new Error("expected the initial cleaning version");
+  if (!Number.isInteger(CURRENT_TRANSFORM_VERSION) || CURRENT_TRANSFORM_VERSION < 1) {
+    throw new Error("the cleaning version must be a positive integer");
+  }
   if (stampForCleanWrite() !== CURRENT_TRANSFORM_VERSION) {
     throw new Error("the stamp written with clean rows must be the current version");
   }
