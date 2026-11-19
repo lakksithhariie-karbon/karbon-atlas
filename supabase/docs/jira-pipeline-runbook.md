@@ -13,6 +13,11 @@ npx -y supabase@2.72.7 functions deploy jira-sync \
   --no-verify-jwt
 ```
 
+If npm blocks the package's postinstall (it downloads the CLI binary), use the same version's
+binary from the [Supabase CLI releases](https://github.com/supabase/cli/releases) with the same
+arguments. `SUPABASE_PROJECT_REF` must be the bare ref, not the project URL. The CLI leaves
+`supabase/.temp/`; delete it before committing.
+
 Set the function secrets (values stay in the shell, not in a file):
 
 - `JIRA_BASE_URL` — `https://karbonworks.atlassian.net`

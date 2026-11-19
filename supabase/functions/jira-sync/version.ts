@@ -1,8 +1,10 @@
 /**
  * Bump this whenever a cleaning rule changes.
  * Incremental then re-cleans raw issues still stamped with an older version.
+ *
+ * History: 2 fills jira_issue_changes.changed_at from bulkfetch's epoch-millisecond `created`.
  */
-export const CURRENT_TRANSFORM_VERSION = 1;
+export const CURRENT_TRANSFORM_VERSION = 2;
 
 /** Version written on raw rows in the same transaction as their clean rows. */
 export function stampForCleanWrite(): number {

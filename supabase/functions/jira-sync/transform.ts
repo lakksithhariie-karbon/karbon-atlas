@@ -280,8 +280,14 @@ function bool(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
+/**
+ * Jira sends most timestamps as ISO strings, but `changelog/bulkfetch` sends `created` as epoch
+ * milliseconds (a number). Accept both; anything else is null.
+ */
 function timestamp(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
+  if (typeof value === "string") return value.length > 0 ? value : null;
+  if (typeof value === "number" && Number.isFinite(value)) return new Date(value).toISOString();
+  return null;
 }
 
 function stringList(value: unknown): string[] | null {

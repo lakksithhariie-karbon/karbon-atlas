@@ -227,3 +227,21 @@ function record(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
 }
+
+Deno.test("change times accept epoch milliseconds from changelog bulkfetch, and ISO strings", () => {
+  const bundle = transformIssue({
+    issue: issueFixture(),
+    comments: [],
+    worklogs: [],
+    histories: [
+      { id: "501", created: 1727761971950, items: [{ field: "status", fromString: "To Do", toString: "UAT" }] },
+      { id: "502", created: "2024-10-01T11:22:51.950+0530", items: [{ field: "labels" }] },
+      { id: "503", items: [{ field: "summary" }] },
+    ],
+  });
+  assert(bundle, "bundle");
+  const byId = new Map(bundle.changes.map((change) => [change.history_id, change.changed_at]));
+  assert(byId.get(501) === "2024-10-01T05:52:51.950Z", `epoch ms: ${byId.get(501)}`);
+  assert(byId.get(502) === "2024-10-01T11:22:51.950+0530", `iso: ${byId.get(502)}`);
+  assert(byId.get(503) === null, "missing stays null");
+});
