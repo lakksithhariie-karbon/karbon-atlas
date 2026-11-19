@@ -71,7 +71,9 @@ export interface IssuePage {
   /** Rebuild keeps sprint rows already loaded from the catalog. */
   sprintConflict: "update" | "ignore";
   writeRaw: boolean;
-  checkpointMode: string;
+  /** Stamped on the raw issue rows in this same transaction. */
+  transformVersion: number;
+  checkpointMode: string | null;
   checkpoint: unknown;
 }
 
@@ -86,6 +88,8 @@ export interface ReferencePage {
   sprints: SprintRow[];
   fields: FieldRow[];
   options: FieldOptionRow[];
+  /** Authoritative account rows from user/bulk. Issue pages do not use this list. */
+  users: UserRow[];
   checkpointMode?: string;
   checkpoint?: unknown;
 }
@@ -124,6 +128,14 @@ function wrap(sql: SqlClient): Db {
       await sql.end({ timeout: 5 });
     },
   };
+}
+
+/** One transaction with a local statement timeout. The callback's writes commit or roll back together. */
+export async function beginBatch<T>(db: Db, fn: (tx: Db) => Promise<T>): Promise<T> {
+  return await db.begin(async (tx) => {
+    await tx.query(`select set_config('statement_timeout', '120000', true)`);
+    return await fn(tx);
+  });
 }
 
 /** Connect with prepared statements off so the transaction pooler accepts the session. */
@@ -281,9 +293,24 @@ const ISSUE_COLUMNS = [
 ];
 
 export async function writeIssuePage(db: Db, page: IssuePage): Promise<void> {
-  await db.begin(async (tx) => {
-    await tx.query(`select set_config('statement_timeout', '120000', true)`);
-    if (page.writeRaw) {
+  await beginBatch(db, async (tx) => {
+    if (page.writeRaw && page.issueIds.length > 0) {
+      await tx.query(
+        `select issue_id
+         from ingest.jira_issue_raw
+         where issue_id in (select value::bigint from json_array_elements_text($1::json))
+         order by issue_id
+         for update`,
+        [page.issueIds],
+      );
+    }
+    await applyIssuePage(tx, page);
+  });
+}
+
+/** Clean-row writes, the version stamp, and the checkpoint. Caller holds the transaction. */
+export async function applyIssuePage(tx: Db, page: IssuePage): Promise<void> {
+  if (page.writeRaw) {
       const rawIssues = lastBy(page.rawIssues, (row) => String(row.issue_id)).map((row) => ({
         issue_id: row.issue_id,
         issue_key: row.issue_key,
@@ -386,13 +413,21 @@ export async function writeIssuePage(db: Db, page: IssuePage): Promise<void> {
       ], ["link_id"], links);
     }
 
-    await saveCheckpoint(tx, page.checkpointMode, page.checkpoint);
-  });
+    // Version stamp in the same transaction as the clean rows above. A failure rolls both back.
+    if (page.issueIds.length > 0) {
+      await tx.query(
+        `update ingest.jira_issue_raw
+         set transform_version = $2
+         where issue_id in (select value::bigint from json_array_elements_text($1::json))`,
+        [page.issueIds, page.transformVersion],
+      );
+    }
+
+  if (page.checkpointMode) await saveCheckpoint(tx, page.checkpointMode, page.checkpoint);
 }
 
 export async function writeReferencePage(db: Db, page: ReferencePage): Promise<void> {
-  await db.begin(async (tx) => {
-    await tx.query(`select set_config('statement_timeout', '120000', true)`);
+  await beginBatch(db, async (tx) => {
     if (page.raw.length > 0) {
       await tx.query(
         `insert into ingest.jira_reference_raw (kind, ref_id, payload, fetched_at)
@@ -429,22 +464,20 @@ export async function writeReferencePage(db: Db, page: ReferencePage): Promise<v
     await upsertClean(tx, "f01_engineering.jira_field_options", [
       "field_id", "option_id", "value", "is_disabled",
     ], ["field_id", "option_id"], asRecords(lastBy(page.options, (row) => `${row.field_id}:${row.option_id}`)));
+    await upsertClean(tx, "f01_engineering.jira_users", [
+      "account_id", "display_name", "account_type", "active", "time_zone",
+    ], ["account_id"], asRecords(lastBy(page.users, (row) => row.account_id)));
     if (page.checkpointMode && page.checkpoint !== undefined) {
       await saveCheckpoint(tx, page.checkpointMode, page.checkpoint);
     }
   });
 }
 
-export async function markDeletions(db: Db, issueIds: number[]): Promise<void> {
-  await db.begin(async (tx) => {
-    await tx.query(`select set_config('statement_timeout', '120000', true)`);
-    await tx.query(
-      `update ingest.jira_issue_raw
-       set deleted_at = now()
-       where deleted_at is null
-         and issue_id not in (select value::bigint from json_array_elements_text($1::json))`,
-      [issueIds],
-    );
+/**
+ * Clear deleted_at on ids Jira returned. When markMissing is false, leave every other issue alone.
+ */
+export async function markDeletions(db: Db, issueIds: number[], markMissing: boolean): Promise<void> {
+  await beginBatch(db, async (tx) => {
     await tx.query(
       `update ingest.jira_issue_raw
        set deleted_at = null
@@ -454,16 +487,24 @@ export async function markDeletions(db: Db, issueIds: number[]): Promise<void> {
     );
     await tx.query(
       `update f01_engineering.jira_issues
-       set deleted_at = now(), synced_at = now()
+       set deleted_at = null, synced_at = now()
+       where deleted_at is not null
+         and issue_id in (select value::bigint from json_array_elements_text($1::json))`,
+      [issueIds],
+    );
+    if (!markMissing) return;
+    await tx.query(
+      `update ingest.jira_issue_raw
+       set deleted_at = now()
        where deleted_at is null
          and issue_id not in (select value::bigint from json_array_elements_text($1::json))`,
       [issueIds],
     );
     await tx.query(
       `update f01_engineering.jira_issues
-       set deleted_at = null, synced_at = now()
-       where deleted_at is not null
-         and issue_id in (select value::bigint from json_array_elements_text($1::json))`,
+       set deleted_at = now(), synced_at = now()
+       where deleted_at is null
+         and issue_id not in (select value::bigint from json_array_elements_text($1::json))`,
       [issueIds],
     );
   });
@@ -490,18 +531,65 @@ export async function maxRawUpdated(db: Db): Promise<string | null> {
   return instant(rows[0]?.max);
 }
 
-export async function readRawIssueBatch(
-  db: Db,
-  afterId: number,
-  limit: number,
-): Promise<Array<{ issue_id: unknown; payload: unknown; deleted_at: unknown }>> {
-  return await db.query(
-    `select issue_id, payload, deleted_at
+export interface LockedRawIssue {
+  issue_id: unknown;
+  payload: unknown;
+  deleted_at: unknown;
+  payload_bytes: unknown;
+}
+
+/**
+ * Lock and read raw issues inside the caller's transaction.
+ * `for update` plus `order by issue_id` matches the lock order used by incremental writes.
+ */
+export async function lockRawIssueBatch(
+  tx: Db,
+  select: { kind: "after"; afterId: number; limit: number } | { kind: "outdated"; version: number; limit: number },
+): Promise<LockedRawIssue[]> {
+  if (select.kind === "after") {
+    return await tx.query(
+      `select issue_id, payload, deleted_at, octet_length(payload::text) as payload_bytes
+       from ingest.jira_issue_raw
+       where issue_id > $1
+       order by issue_id
+       limit $2
+       for update`,
+      [select.afterId, select.limit],
+    );
+  }
+  return await tx.query(
+    `select issue_id, payload, deleted_at, octet_length(payload::text) as payload_bytes
      from ingest.jira_issue_raw
-     where issue_id > $1
+     where transform_version < $1
      order by issue_id
-     limit $2`,
-    [afterId, limit],
+     limit $2
+     for update`,
+    [select.version, select.limit],
+  );
+}
+
+export async function countLiveIssues(db: Db): Promise<number> {
+  const rows = await db.query<Array<{ count: unknown }>>(
+    `select count(*)::int as count from f01_engineering.jira_issues where deleted_at is null`,
+  );
+  return asId(rows[0]?.count ?? 0);
+}
+
+export async function readUserAccountIds(db: Db): Promise<string[]> {
+  const rows = await db.query<Array<{ account_id: string }>>(
+    `select account_id from f01_engineering.jira_users order by account_id`,
+  );
+  return rows.map((row) => row.account_id).filter((id) => id.length > 0);
+}
+
+/** Publish the function's cleaning version so the health view can count outdated raw issues. */
+export async function publishCleaningVersion(db: Db, version: number): Promise<void> {
+  await db.query(
+    `insert into ingest.jira_cleaning_version (singleton, version)
+     values (true, $1)
+     on conflict (singleton) do update set version = excluded.version
+     where ingest.jira_cleaning_version.version is distinct from excluded.version`,
+    [version],
   );
 }
 
@@ -549,12 +637,13 @@ export async function finishRun(
   counts: RunCounts,
   requests: number,
   error: string | null,
+  warning: string | null = null,
 ): Promise<void> {
   await db.query(
     `update ingest.jira_sync_runs
-     set finished_at = now(), status = $2, counts = $3::jsonb, requests = $4, error = $5
+     set finished_at = now(), status = $2, counts = $3::jsonb, requests = $4, error = $5, warning = $6
      where run_id = $1::uuid`,
-    [runId, status, counts, requests, error],
+    [runId, status, counts, requests, error, warning],
   );
 }
 

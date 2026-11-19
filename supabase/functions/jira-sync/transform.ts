@@ -332,6 +332,35 @@ export function dedupeUsers(users: UserRow[]): UserRow[] {
   return [...merged.values()];
 }
 
+export interface UserReference {
+  users: UserRow[];
+  raw: Array<{ kind: string; ref_id: string; payload: unknown }>;
+}
+
+/**
+ * Map `/user/bulk` account payloads to clean rows and raw reference rows.
+ * Every emailAddress key is removed before the payload is stored.
+ */
+export function transformUserBulk(payloads: unknown[]): UserReference {
+  const users: UserRow[] = [];
+  const raw: UserReference["raw"] = [];
+  for (const payload of payloads) {
+    const stripped = stripEmailAddresses(payload);
+    const row = record(stripped);
+    const accountId = text(row?.accountId);
+    if (!row || !accountId) continue;
+    users.push({
+      account_id: accountId,
+      display_name: text(row.displayName),
+      account_type: text(row.accountType),
+      active: bool(row.active),
+      time_zone: text(row.timeZone),
+    });
+    raw.push({ kind: "user", ref_id: accountId, payload: stripped });
+  }
+  return { users: dedupeUsers(users), raw };
+}
+
 function readUser(value: unknown, into: UserRow[]): string | null {
   const row = record(value);
   if (!row) return null;

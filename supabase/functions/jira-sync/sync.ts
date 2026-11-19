@@ -4,17 +4,22 @@
  */
 
 import {
+  applyIssuePage,
   asId,
+  beginBatch,
   connect,
+  countLiveIssues,
   finishRun,
   insertRun,
   instant,
+  lockRawIssueBatch,
   maxRawUpdated,
   markDeletions,
+  publishCleaningVersion,
   readCheckpoint,
   readRawChildren,
-  readRawIssueBatch,
   readReference,
+  readUserAccountIds,
   type Db,
   type IssuePage,
   type RawChildWrite,
@@ -24,6 +29,7 @@ import {
   writeIssuePage,
   writeReferencePage,
 } from "./db.ts";
+import { decideDeletionGuard } from "./guard.ts";
 import { JiraClient } from "./jira.ts";
 import { releaseLease, takeLease } from "./lock.ts";
 import {
@@ -41,12 +47,17 @@ import {
   transformProject,
   transformSprint,
   transformStatus,
+  transformUserBulk,
   type IssueBundle,
   type SprintRow,
   type UserRow,
 } from "./transform.ts";
+import { stampForCleanWrite } from "./version.ts";
 
 const BUDGET_MS = 100_000;
+// Write time dominates each batch. A larger batch spends less of the budget on round trips.
+const CLEAN_BATCH = 400;
+const USER_BULK_CHUNK = 200;
 const BACKFILL_JQL = "project = SPEND ORDER BY key ASC";
 const ID_JQL = "project = SPEND ORDER BY key ASC";
 
@@ -58,6 +69,7 @@ export interface RunResult {
   counts: RunCounts;
   requests: number;
   error?: string;
+  warning?: string | null;
 }
 
 function emptyCounts(): RunCounts {
@@ -142,6 +154,7 @@ function blankReference(): ReferencePage {
     sprints: [],
     fields: [],
     options: [],
+    users: [],
   };
 }
 
@@ -278,6 +291,7 @@ function bundlePage(
     issueSprints: bundles.flatMap((bundle) => bundle.issueSprints),
     sprintConflict,
     writeRaw: true,
+    transformVersion: stampForCleanWrite(),
     checkpointMode,
     checkpoint,
   };
@@ -398,15 +412,44 @@ async function runIncremental(db: Db, client: JiraClient, deadline: number): Pro
       };
     },
   );
+  if (!outcome.done) {
+    return {
+      done: false,
+      status: "partial",
+      counts: outcome.counts,
+      requests: client.requests,
+    };
+  }
+  const recleaned = await drainOutdated(db, deadline);
   return {
-    done: outcome.done,
-    status: outcome.done ? "ok" : "partial",
-    counts: outcome.counts,
+    done: true,
+    status: "ok",
+    counts: { ...outcome.counts, recleaned },
     requests: client.requests,
   };
 }
 
-async function loadReference(client: JiraClient): Promise<ReferencePage> {
+async function fetchUserBulk(client: JiraClient, accountIds: string[]): Promise<unknown[]> {
+  const found: unknown[] = [];
+  for (let offset = 0; offset < accountIds.length; offset += USER_BULK_CHUNK) {
+    const chunk = accountIds.slice(offset, offset + USER_BULK_CHUNK);
+    const params = chunk.map((id) => `accountId=${encodeURIComponent(id)}`).join("&");
+    let startAt = 0;
+    for (;;) {
+      const body = record(await client.get(
+        `/rest/api/3/user/bulk?${params}&startAt=${startAt}&maxResults=${USER_BULK_CHUNK}`,
+      ));
+      const values = Array.isArray(body?.values) ? body.values : [];
+      found.push(...values);
+      const total = typeof body?.total === "number" ? body.total : values.length;
+      startAt += values.length;
+      if (body?.isLast === true || values.length === 0 || startAt >= total) break;
+    }
+  }
+  return found;
+}
+
+async function loadReference(db: Db, client: JiraClient): Promise<ReferencePage> {
   const page = blankReference();
   const projectPayload = stripEmailAddresses(await client.get("/rest/api/3/project/SPEND"));
   const project = transformProject(projectPayload);
@@ -550,6 +593,13 @@ async function loadReference(client: JiraClient): Promise<ReferencePage> {
       if (body?.isLast === true || values.length === 0 || sprintStart >= total) break;
     }
   }
+
+  const accountIds = await readUserAccountIds(db);
+  if (accountIds.length > 0) {
+    const users = transformUserBulk(await fetchUserBulk(client, accountIds));
+    page.users.push(...users.users);
+    page.raw.push(...users.raw);
+  }
   return page;
 }
 
@@ -560,7 +610,7 @@ async function runNightly(db: Db, client: JiraClient, deadline: number): Promise
   let token = text(state.nextPageToken);
   const resuming = state.inProgress === true && state.phase === "ids";
   if (!resuming) {
-    const reference = await loadReference(client);
+    const reference = await loadReference(db, client);
     counts.pages = reference.fields.length;
     await writeReferencePage(db, {
       ...reference,
@@ -582,10 +632,20 @@ async function runNightly(db: Db, client: JiraClient, deadline: number): Promise
     }
     counts.issues = seen.length;
     if (page.isLast) {
-      await markDeletions(db, [...new Set(seen)]);
+      const ids = [...new Set(seen)];
+      const live = await countLiveIssues(db);
+      const decision = decideDeletionGuard(ids.length, live);
+      await markDeletions(db, ids, decision.markMissing);
       await writeCheckpoint(db, "nightly", { inProgress: false });
-      console.log(`jira-sync nightly issues=${seen.length} requests=${client.requests}`);
-      return { done: true, status: "ok", counts, requests: client.requests };
+      counts.issues = ids.length;
+      counts.jira_ids = ids.length;
+      counts.live_issues = live;
+      console.log(
+        decision.warning
+          ? `jira-sync nightly ${decision.warning}`
+          : `jira-sync nightly issues=${ids.length} requests=${client.requests}`,
+      );
+      return { done: true, status: "ok", counts, requests: client.requests, warning: decision.warning };
     }
     token = page.nextPageToken;
     await writeCheckpoint(db, "nightly", { inProgress: true, phase: "ids", seenIds: seen, nextPageToken: token });
@@ -629,37 +689,109 @@ function referenceFromRaw(rows: Array<{ kind: string; ref_id: string; payload: u
     } else if (row.kind === "sprint") {
       const sprint = transformSprint(row.payload);
       if (sprint) page.sprints.push(sprint);
+    } else if (row.kind === "user") {
+      const user = transformUserBulk([row.payload]).users[0];
+      if (user) page.users.push(user);
     }
   }
   return page;
 }
 
-async function runRebuild(db: Db, deadline: number): Promise<RunResult> {
-  const state = await readCheckpoint(db, "rebuild");
-  const counts = emptyCounts();
-  let afterId = 0;
-  if (state.inProgress === true && (typeof state.lastIssueId === "number" || typeof state.lastIssueId === "string")) {
-    afterId = asId(state.lastIssueId);
-  } else {
-    await writeReferencePage(db, referenceFromRaw(await readReference(db)));
-  }
-  while (Date.now() < deadline) {
-    const batch = await readRawIssueBatch(db, afterId, 100);
-    if (batch.length === 0) {
-      await writeCheckpoint(db, "rebuild", { inProgress: false });
-      return { done: true, status: "ok", counts, requests: 0 };
+interface CleanBatchStats {
+  issues: number;
+  comments: number;
+  worklogs: number;
+  changelogs: number;
+  readMs: number;
+  transformMs: number;
+  writeMs: number;
+  payloadBytes: number;
+  lastIssueId: number | null;
+}
+
+function pageFromBundles(
+  bundles: IssueBundle[],
+  issueIds: number[],
+  checkpointMode: string | null,
+  checkpoint: unknown,
+): IssuePage {
+  const users: UserRow[] = [];
+  for (const bundle of bundles) users.push(...bundle.users);
+  return {
+    issueIds,
+    rawIssues: [],
+    rawComments: [],
+    rawWorklogs: [],
+    rawHistories: [],
+    projects: bundles.flatMap((bundle) => bundle.project ? [bundle.project] : []),
+    issueTypes: bundles.flatMap((bundle) => bundle.issueType ? [bundle.issueType] : []),
+    statuses: bundles.flatMap((bundle) => bundle.status ? [bundle.status] : []),
+    priorities: bundles.flatMap((bundle) => bundle.priority ? [bundle.priority] : []),
+    teams: bundles.flatMap((bundle) => bundle.team ? [bundle.team] : []),
+    users: dedupeUsers(users),
+    linkTypes: bundles.flatMap((bundle) => bundle.linkTypes),
+    sprints: bundles.flatMap((bundle) => bundle.sprints),
+    issues: bundles.map((bundle) => bundle.issue),
+    comments: bundles.flatMap((bundle) => bundle.comments),
+    changes: bundles.flatMap((bundle) => bundle.changes),
+    worklogs: bundles.flatMap((bundle) => bundle.worklogs),
+    attachments: bundles.flatMap((bundle) => bundle.attachments),
+    links: bundles.flatMap((bundle) => bundle.links),
+    issueSprints: bundles.flatMap((bundle) => bundle.issueSprints),
+    sprintConflict: "ignore",
+    writeRaw: false,
+    transformVersion: stampForCleanWrite(),
+    checkpointMode,
+    checkpoint,
+  };
+}
+
+function addTiming(counts: RunCounts, batch: CleanBatchStats): void {
+  counts.read_ms = (counts.read_ms ?? 0) + batch.readMs;
+  counts.transform_ms = (counts.transform_ms ?? 0) + batch.transformMs;
+  counts.write_ms = (counts.write_ms ?? 0) + batch.writeMs;
+  counts.payload_bytes = (counts.payload_bytes ?? 0) + batch.payloadBytes;
+}
+
+async function oneCleanBatch(
+  db: Db,
+  select: { kind: "after"; afterId: number; limit: number } | { kind: "outdated"; version: number; limit: number },
+  checkpointMode: "rebuild" | null,
+): Promise<CleanBatchStats> {
+  return await beginBatch(db, async (tx) => {
+    const readStarted = performance.now();
+    const locked = await lockRawIssueBatch(tx, select);
+    const issueIds = locked.map((row) => asId(row.issue_id));
+    const payloadBytes = locked.reduce((sum, row) => sum + asId(row.payload_bytes), 0);
+    const readChildren = async () => {
+      const comments = await readRawChildren(tx, "jira_comment_raw", "comment_id", issueIds);
+      const worklogs = await readRawChildren(tx, "jira_worklog_raw", "worklog_id", issueIds);
+      const histories = await readRawChildren(tx, "jira_changelog_raw", "history_id", issueIds);
+      return { comments, worklogs, histories };
+    };
+    if (issueIds.length === 0) {
+      const readMs = Math.round(performance.now() - readStarted);
+      if (checkpointMode) await writeCheckpoint(tx, checkpointMode, { inProgress: false });
+      return {
+        issues: 0,
+        comments: 0,
+        worklogs: 0,
+        changelogs: 0,
+        readMs,
+        transformMs: 0,
+        writeMs: 0,
+        payloadBytes: 0,
+        lastIssueId: null,
+      };
     }
-    const issueIds = batch.map((row) => asId(row.issue_id));
-    const [comments, worklogs, histories] = await Promise.all([
-      readRawChildren(db, "jira_comment_raw", "comment_id", issueIds),
-      readRawChildren(db, "jira_worklog_raw", "worklog_id", issueIds),
-      readRawChildren(db, "jira_changelog_raw", "history_id", issueIds),
-    ]);
-    const commentMap = groupByIssue(comments);
-    const worklogMap = groupByIssue(worklogs);
-    const historyMap = groupByIssue(histories);
+    const children = await readChildren();
+    const readMs = Math.round(performance.now() - readStarted);
+    const transformStarted = performance.now();
+    const commentMap = groupByIssue(children.comments);
+    const worklogMap = groupByIssue(children.worklogs);
+    const historyMap = groupByIssue(children.histories);
     const bundles: IssueBundle[] = [];
-    for (const row of batch) {
+    for (const row of locked) {
       const issueId = asId(row.issue_id);
       const bundle = transformIssue({
         issue: row.payload,
@@ -671,42 +803,88 @@ async function runRebuild(db: Db, deadline: number): Promise<RunResult> {
       if (!bundle) throw new Error("GET /rest/api/3/search/jql failed with incomplete payload");
       bundles.push(bundle);
     }
-    const users: UserRow[] = [];
-    for (const bundle of bundles) users.push(...bundle.users);
-    const lastIssueId = issueIds[issueIds.length - 1];
-    await writeIssuePage(db, {
+    const transformMs = Math.round(performance.now() - transformStarted);
+    const lastIssueId = issueIds[issueIds.length - 1] ?? null;
+    const page = pageFromBundles(
+      bundles,
       issueIds,
-      rawIssues: [],
-      rawComments: [],
-      rawWorklogs: [],
-      rawHistories: [],
-      projects: bundles.flatMap((bundle) => bundle.project ? [bundle.project] : []),
-      issueTypes: bundles.flatMap((bundle) => bundle.issueType ? [bundle.issueType] : []),
-      statuses: bundles.flatMap((bundle) => bundle.status ? [bundle.status] : []),
-      priorities: bundles.flatMap((bundle) => bundle.priority ? [bundle.priority] : []),
-      teams: bundles.flatMap((bundle) => bundle.team ? [bundle.team] : []),
-      users: dedupeUsers(users),
-      linkTypes: bundles.flatMap((bundle) => bundle.linkTypes),
-      sprints: bundles.flatMap((bundle) => bundle.sprints),
-      issues: bundles.map((bundle) => bundle.issue),
-      comments: bundles.flatMap((bundle) => bundle.comments),
-      changes: bundles.flatMap((bundle) => bundle.changes),
-      worklogs: bundles.flatMap((bundle) => bundle.worklogs),
-      attachments: bundles.flatMap((bundle) => bundle.attachments),
-      links: bundles.flatMap((bundle) => bundle.links),
-      issueSprints: bundles.flatMap((bundle) => bundle.issueSprints),
-      sprintConflict: "ignore",
-      writeRaw: false,
-      checkpointMode: "rebuild",
-      checkpoint: { inProgress: true, lastIssueId },
-    });
+      checkpointMode,
+      checkpointMode ? { inProgress: true, lastIssueId } : null,
+    );
+    const writeStarted = performance.now();
+    await applyIssuePage(tx, page);
+    const writeMs = Math.round(performance.now() - writeStarted);
+    return {
+      issues: bundles.length,
+      comments: bundles.reduce((sum, bundle) => sum + bundle.comments.length, 0),
+      worklogs: bundles.reduce((sum, bundle) => sum + bundle.worklogs.length, 0),
+      changelogs: bundles.reduce((sum, bundle) => sum + bundle.changes.length, 0),
+      readMs,
+      transformMs,
+      writeMs,
+      payloadBytes,
+      lastIssueId,
+    };
+  });
+}
+
+async function drainOutdated(db: Db, deadline: number): Promise<number> {
+  if (Date.now() >= deadline) {
+    console.log("jira-sync drain skipped budget");
+    return 0;
+  }
+  const owner = crypto.randomUUID();
+  const locked = await takeLease(db, "rebuild", owner);
+  if (!locked) {
+    console.log("jira-sync drain skipped rebuild lease held");
+    return 0;
+  }
+  try {
+    let recleaned = 0;
+    while (Date.now() < deadline) {
+      const batch = await oneCleanBatch(
+        db,
+        { kind: "outdated", version: stampForCleanWrite(), limit: CLEAN_BATCH },
+        null,
+      );
+      if (batch.issues === 0) break;
+      recleaned += batch.issues;
+      console.log(
+        `jira-sync drain batch issues=${batch.issues} read_ms=${batch.readMs} transform_ms=${batch.transformMs} write_ms=${batch.writeMs} payload_bytes=${batch.payloadBytes} recleaned=${recleaned}`,
+      );
+    }
+    console.log(`jira-sync drain recleaned=${recleaned}`);
+    return recleaned;
+  } finally {
+    await releaseLease(db, "rebuild", owner);
+  }
+}
+
+async function runRebuild(db: Db, deadline: number): Promise<RunResult> {
+  const state = await readCheckpoint(db, "rebuild");
+  const counts = emptyCounts();
+  let afterId = 0;
+  if (state.inProgress === true && (typeof state.lastIssueId === "number" || typeof state.lastIssueId === "string")) {
+    afterId = asId(state.lastIssueId);
+  } else {
+    const referenceStarted = performance.now();
+    await writeReferencePage(db, referenceFromRaw(await readReference(db)));
+    counts.reference_ms = Math.round(performance.now() - referenceStarted);
+    console.log(`jira-sync rebuild reference_ms=${counts.reference_ms}`);
+  }
+  while (Date.now() < deadline) {
+    const batch = await oneCleanBatch(db, { kind: "after", afterId, limit: CLEAN_BATCH }, "rebuild");
+    addTiming(counts, batch);
+    if (batch.issues === 0) return { done: true, status: "ok", counts, requests: 0 };
     counts.pages = (counts.pages ?? 0) + 1;
-    counts.issues = (counts.issues ?? 0) + bundles.length;
-    counts.comments = (counts.comments ?? 0) + bundles.reduce((sum, bundle) => sum + bundle.comments.length, 0);
-    counts.worklogs = (counts.worklogs ?? 0) + bundles.reduce((sum, bundle) => sum + bundle.worklogs.length, 0);
-    counts.changelogs = (counts.changelogs ?? 0) + bundles.reduce((sum, bundle) => sum + bundle.changes.length, 0);
-    afterId = lastIssueId ?? afterId;
-    console.log(`jira-sync rebuild issues=${counts.issues}`);
+    counts.issues = (counts.issues ?? 0) + batch.issues;
+    counts.comments = (counts.comments ?? 0) + batch.comments;
+    counts.worklogs = (counts.worklogs ?? 0) + batch.worklogs;
+    counts.changelogs = (counts.changelogs ?? 0) + batch.changelogs;
+    afterId = batch.lastIssueId ?? afterId;
+    console.log(
+      `jira-sync rebuild batch issues=${batch.issues} read_ms=${batch.readMs} transform_ms=${batch.transformMs} write_ms=${batch.writeMs} payload_bytes=${batch.payloadBytes}`,
+    );
   }
   return { done: false, status: "partial", counts, requests: 0 };
 }
@@ -727,6 +905,7 @@ export async function runSync(mode: Mode): Promise<RunResult> {
   let runId: string | null = null;
   let locked = false;
   try {
+    await publishCleaningVersion(db, stampForCleanWrite());
     locked = await takeLease(db, mode, owner);
     if (!locked) {
       runId = await insertRun(db, mode, startedAt);
@@ -735,7 +914,7 @@ export async function runSync(mode: Mode): Promise<RunResult> {
     }
     runId = await insertRun(db, mode, startedAt);
     const result = await execute(db, mode, Date.now() + BUDGET_MS);
-    await finishRun(db, runId, result.status, result.counts, result.requests, null);
+    await finishRun(db, runId, result.status, result.counts, result.requests, null, result.warning ?? null);
     return result;
   } catch (error) {
     const message = safeMessage(error);

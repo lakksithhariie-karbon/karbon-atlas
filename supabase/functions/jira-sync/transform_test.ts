@@ -1,4 +1,4 @@
-import { stripEmailAddresses, transformIssue } from "./transform.ts";
+import { stripEmailAddresses, transformIssue, transformUserBulk } from "./transform.ts";
 
 const EMAIL = "hidden@example.com";
 
@@ -195,6 +195,32 @@ Deno.test("email addresses are stripped from stored payloads and never reach cle
   assert(bundle?.changes[0]?.item_index === 0, "item index");
   assert(bundle?.changes[0]?.field_type === "jira", "field type");
   assert(bundle?.changes[0]?.to_display === "Done", "to display");
+});
+
+Deno.test("user bulk drops emailAddress and keeps the account fields", () => {
+  const bulk = transformUserBulk([
+    {
+      accountId: "acc-1",
+      displayName: "Renamed",
+      accountType: "atlassian",
+      active: false,
+      timeZone: "Asia/Calcutta",
+      emailAddress: EMAIL,
+      groups: { items: [{ name: "crew", emailAddress: EMAIL }] },
+    },
+    { displayName: "No account" },
+  ]);
+  const encoded = JSON.stringify(bulk);
+  if (encoded.includes("emailAddress") || encoded.includes(EMAIL)) throw new Error("email survived user bulk");
+  if (bulk.raw.length !== 1 || bulk.raw[0]?.kind !== "user" || bulk.raw[0]?.ref_id !== "acc-1") {
+    throw new Error("raw user row");
+  }
+  const user = bulk.users[0];
+  if (!user || bulk.users.length !== 1) throw new Error("one user");
+  if (user.account_id !== "acc-1" || user.display_name !== "Renamed") throw new Error("name");
+  if (user.account_type !== "atlassian" || user.active !== false || user.time_zone !== "Asia/Calcutta") {
+    throw new Error("flags");
+  }
 });
 
 function record(value: unknown): Record<string, unknown> | null {

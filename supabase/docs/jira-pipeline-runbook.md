@@ -82,7 +82,27 @@ where jobname in ('jira-sync-incremental', 'jira-sync-nightly');
 select * from ingest.jira_sync_health;
 ```
 
-`is_stale` is true when incremental has no successful run for 120 minutes, or nightly has none for 26 hours. Recent runs are in `ingest.jira_sync_runs`.
+`is_stale` is true when incremental has no successful run for 120 minutes, or nightly has none for 26 hours. `outdated_issues` is how many raw issues are still behind the published cleaning version. Recent runs are in `ingest.jira_sync_runs`.
+
+## Cleaning version and the drain
+
+`CURRENT_TRANSFORM_VERSION` lives in `supabase/functions/jira-sync/version.ts`. Bump that constant by 1 when a cleaning rule changes, then deploy the function. Do not edit stored rows by hand. The next invocation publishes the new version into `ingest.jira_cleaning_version`. After that, `outdated_issues` counts raw rows whose `transform_version` is lower.
+
+Each incremental tick does its Jira work first. If that tick finishes inside the time budget, and no rebuild holds the rebuild lease, the rest of the budget re-cleans outdated raw issues in batches. That drain does not call Jira. It locks each batch with `select … for update` and writes the clean rows and the new version in one transaction. A partial incremental skips the drain. A manual rebuild is unchanged: it still walks every raw issue and holds the rebuild lease, which makes the drain wait for a later tick.
+
+The run's `counts` include `recleaned` for a drain and, on a rebuild, `read_ms`, `transform_ms`, `write_ms`, and `payload_bytes`.
+
+## Deletion guard
+
+Nightly compares the number of issue ids Jira returned with the live rows in `f01_engineering.jira_issues` (`deleted_at is null`). Fewer than 90 percent and it does not set `deleted_at` on any issue. It still clears `deleted_at` on ids Jira did return. The run status stays `ok`. `warning` is text that starts with `deletion guard:` and includes both counts. `last_deletion_guard_at` on the health view is the finish time of the latest run with that warning. A null there means the guard has not tripped.
+
+```sql
+select finished_at, warning
+from ingest.jira_sync_runs
+where warning like 'deletion guard:%'
+order by finished_at desc
+limit 5;
+```
 
 ## Rotate the Jira token
 
