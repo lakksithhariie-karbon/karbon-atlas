@@ -16,7 +16,8 @@ the leading letter means the name never needs quoting in SQL.
 | `f01_engineering` | Engineering data, starting with Jira project AiA (`SPEND`) | Jira tables and views |
 
 Raw source payloads and sync bookkeeping live in the private `ingest` schema. The Jira sync
-function and its runbook are `supabase/functions/jira-sync/` and `supabase/docs/jira-pipeline-runbook.md`.
+function is `supabase/functions/jira-sync/`. Its runbook and design record are internal and kept
+outside this public repo.
 
 ## Migrations
 
