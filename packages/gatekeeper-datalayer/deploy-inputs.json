@@ -1,0 +1,8 @@
+[
+  {
+    "name": "DATA_LAYER_DATABASE_URL",
+    "kind": "secret",
+    "label": "Read-only database URL",
+    "help": "The Postgres connection string for the Data Layer's read-only login (the Supabase transaction pooler, port 6543). The login must have SELECT only on the f<NN>_ schemas it may read. Its server certificate must chain to a CA the Worker trusts."
+  }
+]

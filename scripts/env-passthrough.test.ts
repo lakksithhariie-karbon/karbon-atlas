@@ -67,6 +67,13 @@ const EXPECTED: Record<string, ExpectedArea> = {
   "packages/gatekeeper-microsoft": {
     external: ["MICROSOFT_CONTRACT_BASE_URL", "MICROSOFT_CONTRACT_TOKENS"],
   },
+  // Karbon: the live suite connects to the Data Layer's database and runs only through
+  // `pnpm test:live`, a package.json script run directly, never as a vp task. The cached `test`
+  // task loads the same vitest.config.ts with both variables stripped, so it always skips the live
+  // suite and replays that result, which is what CI should do.
+  "packages/gatekeeper-datalayer": {
+    external: ["DATA_LAYER_DATABASE_URL", "NODE_EXTRA_CA_CERTS"],
+  },
   // `build/runtime.ts` defines `process.env.NODE_ENV` as "production" for the libraries it bundles
   // into the configurator runtime; the ambient value is never read.
   "packages/configurator-ui": {

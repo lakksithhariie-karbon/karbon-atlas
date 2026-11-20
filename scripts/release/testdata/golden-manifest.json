@@ -201,6 +201,59 @@
         "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/context"
       }
     },
+    "gatekeeper-datalayer": {
+      "bindings": [
+        {
+          "name": "DATA_LAYER_DATABASE_URL",
+          "text": "$SECRET(DATA_LAYER_DATABASE_URL)",
+          "type": "secret_text"
+        }
+      ],
+      "compatibilityDate": "2026-09-04",
+      "compatibilityFlags": [
+        "nodejs_compat",
+        "allow_irrevocable_stub_storage"
+      ],
+      "inputs": [
+        {
+          "help": "The Postgres connection string for the Data Layer's read-only login (the Supabase transaction pooler, port 6543). The login must have SELECT only on the f<NN>_ schemas it may read. Its server certificate must chain to a CA the Worker trusts.",
+          "kind": "secret",
+          "label": "Read-only database URL",
+          "name": "DATA_LAYER_DATABASE_URL"
+        }
+      ],
+      "installable": true,
+      "kind": "gatekeeper",
+      "mainModule": "datalayer.js",
+      "migrations": [
+        {
+          "new_sqlite_classes": [
+            "DataLayerGatekeeper"
+          ],
+          "tag": "v1"
+        }
+      ],
+      "modules": [
+        {
+          "name": "datalayer.js",
+          "r2Key": "blobs/modules/35d8cdb9cc35b3203948ce18bde592185fd3ffdc122f227865eb7af51caef364",
+          "sha256": "35d8cdb9cc35b3203948ce18bde592185fd3ffdc122f227865eb7af51caef364",
+          "size": 62,
+          "type": "esm"
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+          "invocation_logs": false
+        }
+      },
+      "shortName": "datalayer",
+      "vars": {
+        "BASE_URL": "$PUBLIC_BASE_URL/gatekeeper/datalayer"
+      }
+    },
     "gatekeeper-email": {
       "bindings": [],
       "compatibilityDate": "2026-09-04",

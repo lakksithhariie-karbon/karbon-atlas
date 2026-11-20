@@ -25,6 +25,17 @@ outside this public repo.
 written to be safe to run twice (`if not exists`, and so on). Some migrations are applied through
 the Supabase Management API rather than the CLI, so the CLI's migration history may not list them.
 
+## Tests
+
+`tests/data_layer_reader_test.ts` checks, against the live database, that the Data Layer login
+`karbon_data_reader` can read `f01_engineering` and nothing else that matters. It needs
+`DATA_LAYER_DATABASE_URL` in the root `.dev.vars`. Every write probe matches no rows or is rolled
+back, and no row contents are printed.
+
+```sh
+deno test --config supabase/tests/deno.json --no-lock --allow-net --allow-env --allow-read supabase/tests/data_layer_reader_test.ts
+```
+
 ## Secrets
 
 Credentials live in `.secrets/.env` (git-ignored), never in this folder.
