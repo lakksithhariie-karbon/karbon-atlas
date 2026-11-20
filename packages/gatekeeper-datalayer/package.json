@@ -1,0 +1,28 @@
+{
+  "name": "@gadgets/gatekeeper-datalayer",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "echo \"run 'pnpm dev-server' in the root directory instead\" >&2 && exit 1",
+    "deploy": "wrangler deploy",
+    "build": "tsc",
+    "test:run": "vitest run",
+    "test:live": "NODE_EXTRA_CA_CERTS=\"${NODE_EXTRA_CA_CERTS:-certs/supabase-root-2021-ca.crt}\" vitest run"
+  },
+  "dependencies": {
+    "@gadgets/gatekeeper-kit": "workspace:*",
+    "@gadgets/workshop-shared": "workspace:*",
+    "capnweb": "catalog:",
+    "capnweb-validate": "catalog:",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "catalog:",
+    "@gadgets/scripts": "workspace:*",
+    "@types/node": "26.1.0",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:",
+    "wrangler": "catalog:"
+  }
+}

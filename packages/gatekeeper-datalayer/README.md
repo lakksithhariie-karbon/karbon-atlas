@@ -6,7 +6,7 @@ An auto-provisioned ("ambient") gatekeeper whose account gives every signed-in u
 Gadgets a `DATA_LAYER` binding: read-only SQL over Karbon's company data in Supabase, with no
 OAuth and no per-chat approval. The API is `src/types.d.ts`. This file is the design record.
 
-**Status:** Phase 2 (API review). The database roles exist; the worker is not built yet.
+**Status:** Phase 3. The worker is built and runs locally; production hosting is out of scope.
 
 ## Model
 
@@ -38,51 +38,134 @@ role per access level and cannot `SET ROLE` (`supabase/migrations/20261119200000
   granting the raw schema. Any view added to an `f<NN>_` schema therefore exposes what it selects,
   so views are reviewed like grants.
 
-## Query path (Phase 3)
+## Query path
 
-Each `query()`:
+Code: `src/guard.ts` (both checks) and `src/database.ts` (what is sent). Each `query()`:
 
-1. **Validates against Postgres's own parse, never regexes.** Regexes are what a comment defeats
-   (`net/**/.http_get(...)`). The query is accepted only if it is one `SELECT` / `WITH` /
-   `VALUES` / `TABLE` statement (one trailing semicolon stripped), with no data-modifying `WITH`,
-   `SELECT INTO` or locking clause. Then every relation it reads, after view expansion, is mapped back to an allowed
-   schema, or to a relation an allowed schema's view reads. Every function it calls must be off
-   the deny list in `types.d.ts`. The parse is either `EXPLAIN (VERBOSE, FORMAT JSON)` in the same
-   read-only transaction, where Postgres resolves names and strips comments, or a libpg_query
-   parser. Phase 3 picks one, with tests of both kinds of input.
-2. **Records the observation** before returning data (see below).
-3. **Runs** inside `BEGIN READ ONLY`, with `SET LOCAL statement_timeout = '30s'` and
-   `SET LOCAL search_path = pg_catalog, <allowed schemas>`, as
-   `SELECT * FROM (<sql>) AS q LIMIT 501` over the **extended protocol** (`postgres.js`
-   `unsafe(text, params ?? [], { simple: false })`). With no parameters, `postgres.js` would
-   otherwise use the simple protocol, which runs every statement in the string:
-   `select 1); select 99 --` escapes the wrapper there, and then a `commit` leaves the read-only
-   transaction (shown live by Cursor's review). The extended protocol refuses a second statement
-   (`42601`). The 501st row sets `truncated`.
-4. **Rejects** results with duplicate column names, and caps the serialized result at about 5 MB.
+1. **Text pass, before Postgres sees the SQL.** A tokenizer that lexes like Postgres (nested
+   comments, `E''` and dollar-quoted strings, quoted identifiers, parameters; `U&` escapes and
+   anything unterminated are refused) checks that the SQL is one `SELECT` / `WITH` / `VALUES` /
+   `TABLE` statement with at most one trailing semicolon, whose parentheses balance. That keeps a
+   stray `)` from closing the wrapper's subquery early. It refuses:
+   - write and session keywords;
+   - any identifier naming a denied function, quoted or schema-qualified. The deny list covers
+     every `pg_*` function except `pg_typeof` and `pg_column_size`, since analytics doesn't need
+     them. It also covers SQL-from-a-string functions (`*_to_xml`, `ts_stat`), settings,
+     `inet_server_addr()`, comments on catalog objects, and pg_net's functions;
+   - any identifier naming a schema outside the allowed ones. That covers the Supabase and system
+     schemas, and every other schema the login can use. A table alias with such a name is refused
+     too.
+
+   **Why it comes first:** planning evaluates stable functions with constant arguments. Checked
+   live: `EXPLAIN … where summary = table_to_xml('f01_engineering.jira_projects'::regclass, true,
+   false, '')::text::int::text` returns the table's contents in the cast error, without running
+   anything. So nothing denied may reach `EXPLAIN`.
+2. **Plan pass.** `EXPLAIN (VERBOSE, FORMAT JSON)` of the wrapped statement, in a READ ONLY
+   transaction. Postgres has resolved names and expanded views. The pass refuses:
+   - `LockRows` / `ModifyTable` nodes;
+   - function scans other than an allowlist of set-returning functions (`generate_series`,
+     `unnest`, the JSON `*_each` / `*_elements` / `*_to_record` family, …). Catalog views such as
+     `pg_settings` or `pg_prepared_statements` expand to function scans of internal functions;
+   - denied functions anywhere in a deparsed expression;
+   - calls or operators qualified by any schema but `pg_catalog`.
+
+   Every scanned relation must be in an allowed schema, or be one the login has no `SELECT` on.
+   The second case can only come from inside an owner-rights view: `data_freshness` scans `ingest`.
+   A relation the login *can* read outside the allowed schemas (pg_net's queue) is refused, and so
+   is anything in `pg_catalog`, `information_schema` or `pg_toast`. The catalogs have owner-rights
+   views of their own (`pg_roles` and `pg_user` scan `pg_authid`), so "can't read it directly"
+   proves nothing there.
+
+   Last, the same wrapper with `LIMIT 0` returns the result's columns and types without reading a
+   row. Duplicate names, `__proto__` and `bytea` are refused there, before anything is recorded.
+3. **Records the observation**, outside any transaction, with the schemas found. These are the
+   allowed schemas named in the text, plus those of scanned relations. Both are needed: the planner
+   drops tables it can prove irrelevant (`where false`, a removable join). A refused or failed
+   record stops the query.
+4. **Runs** in a second READ ONLY transaction as `SELECT * FROM (\n<sql>\n) AS q LIMIT 501`.
+   - The line breaks keep a trailing `--` comment inside.
+   - The statement goes over the **extended protocol**. Every statement goes through `run()`,
+     which passes `simple: false`, because postgres.js picks the simple protocol whenever the
+     parameter list is empty. The simple protocol runs every statement in the string:
+     `select 1); select 99 --` escapes the wrapper there, and a `commit` then leaves read-only.
+     The extended protocol refuses a second statement (`42601`). The live suite tests this layer
+     on its own.
+   - Each transaction first sets `statement_timeout = 30s`, `search_path = pg_catalog` (so every
+     table must be schema-qualified, and the text pass sees every schema a query names) and
+     `TimeZone = UTC`.
+5. **Shapes the result:**
+   - checks duplicate names, `__proto__` and `bytea` again, since step 2 ran in another
+     transaction;
+   - sets `truncated` from the 501st row;
+   - caps the serialized result at about 5 MB.
+
+   Rows are bounded at 501 before they are fetched. Bytes are checked after, so a single huge value
+   is bounded only by the timeout and the Worker's memory. An oversized result is the one refusal
+   recorded first: the caller still gets nothing.
+
+   A view replaced between the two transactions would run unchecked. Only the project's `postgres`
+   role can change views (in migrations), so this is accepted, not guarded.
 
 **Why the read-only transaction is load-bearing.** The login can read `net` (pg_net) and can install
 extensions through supautils, and the project's `postgres` role can't revoke either. Inside a
 read-only transaction neither can do harm: pg_net can't queue a request and `CREATE EXTENSION`
-fails (`25006`). The parse check keeps the `net` tables themselves unread.
+fails (`25006`). The two passes keep the `net` tables themselves unread.
 
-**Values:** `postgres.js` 3.4.5 keeps `int8`, `numeric` and `interval` as text, which matches
-`types.d.ts`. Its default `date` / `timestamp` / `timestamptz` parsers return `Date`, which
-doesn't match. Custom `types` keep `date` as `YYYY-MM-DD`, give `timestamp` as ISO-8601 with no
-zone and `timestamptz` through `toISOString()`, and reject `bytea`.
+**Values:** postgres.js keeps `int8`, `numeric` and `interval` as text, which matches `types.d.ts`.
+Custom `types` replace its `Date` parsers:
+- `date` stays `YYYY-MM-DD`;
+- `timestamp` becomes ISO-8601 with no zone;
+- `timestamptz` (the session is in UTC) becomes ISO-8601 with `Z`, to the millisecond;
+- `infinity`, BC dates and years past 9999 stay as Postgres writes them.
 
-**Performance prerequisite.** The golden "AP bugs stuck in UAT" query
-(`jira_issue_status_periods` joined to `jira_issue_lifecycle`, filtered on `product_areas`) takes
-about 23 s, because the filter applies only after the view builds all ~30,000 status stints. The
-other golden queries take under 0.4 s. Phase 3 adds a cheap current-status read: the current
-stint is `status_changed_at` on the issue, so no window over the changelog is needed. With that,
-30 s is a ceiling, not the expected time.
+**Current status.** `jira_issue_status_periods` numbers every status move of every issue, so the
+golden "AP bugs stuck in UAT" query took about 25 s. The view built all ~30,000 stints before any
+filter applied.
 
-**Connection:** direct Postgres over TCP, through Supabase's transaction pooler (port 6543), with
-`postgres.js` (`prepare: false`; the pooler can't use prepared statements). Workers can't reuse a
-connection across requests, so each call opens one. Production should front it with Hyperdrive.
-Locally the URL comes from `DATA_LAYER_DATABASE_URL` in the root `.dev.vars`. The login's
-`connection limit 10` is the backpressure: an 11th concurrent query fails with `53300`.
+`jira_issue_current_status`
+(`supabase/migrations/20261120090000_f01_engineering_current_status.sql`) finds each issue's latest
+status move with a LATERAL lookup over a partial index on `jira_issue_changes (issue_id, changed_at
+desc, history_id desc, item_index desc) where field = 'status'`. That brought it to about 1.3 s
+end to end. It equals `jira_issue_status_periods where is_current` for every live issue (checked at 7,672 and
+again at 7,673).
+
+It is not built on `jira_issues.status_changed_at`. That column is Jira's
+`statuscategorychangedate`, which doesn't move across In Progress → Code Review → UAT (one
+category).
+
+## Connection
+
+- **Transport:** direct Postgres over TCP, through Supabase's transaction pooler (port 6543), with
+  postgres.js 3.4.9 (`prepare: false`; the pooler can't hold prepared statements).
+- **One connection per call,** because a Worker can't keep one between requests. Each `query()`
+  is two transactions on it. Production should front it with Hyperdrive.
+- **URL:** locally, `DATA_LAYER_DATABASE_URL` in the root `.dev.vars`. `run-dev-server.ts` passes
+  it through (`PASSTHROUGH_GATEKEEPER_VARS`).
+- **Backpressure:** the login's `connection limit 10`. An 11th concurrent query fails with `53300`.
+- **TLS:** the pooler's certificate chains to Supabase's own root, which workerd doesn't trust.
+  - `certs/supabase-root-2021-ca.crt` is that root. It came from Supabase's download, and its
+    SHA-256 (`80:70:25:AD:…:CA:FA`) matches the root the pooler sends.
+  - Miniflare trusts it through `NODE_EXTRA_CA_CERTS`, read once at startup: a line in `.dev.vars`
+    for the dev server, and `pnpm test:live` for the live suite.
+  - Production needs the same CA uploaded for Hyperdrive (`wrangler cert upload
+    certificate-authority`, `sslmode=verify-full`).
+  - Certificate verification is never turned off.
+- **Socket:** `src/socket.ts` replaces postgres.js's workerd socket.
+  - The original keeps reading after the connection has closed and removed its listeners, then
+    re-emits "This socket has been closed." to nobody. That ends every call in an unhandled
+    rejection.
+  - The copy drops only an `error` emitted when nothing listens. The pinned version matters
+    because the socket's shape is postgres.js's internal contract.
+- **Errors:** database errors pass through with Postgres's message, unless it is over 300
+  characters. A long message is usually a cast error quoting a value, so only the SQLSTATE is kept. Connection failures become
+  "could not reach its database", so nothing about the connection reaches the caller.
+
+## Tests
+
+- `pnpm test:run` runs the unit suites: `guard.test.ts` and `observers.test.ts`.
+- `pnpm test:live` also runs `live.test.ts` and `attacks.test.ts` against the database as the
+  reader login. The live suites skip without `DATA_LAYER_DATABASE_URL` and `NODE_EXTRA_CA_CERTS`.
+- The Postgres permission suite is `supabase/tests/data_layer_reader_test.ts`.
 
 ## Sharing and observers
 
@@ -99,8 +182,10 @@ This follows the new-gatekeeper observer contract in `.agents/skills/write-gatek
   **observer's own verifier** (`getVerifier()` on their Data Layer account) whether that person's
   policy allows every reported schema. It must never read the capsule's owner props. Unknown ID
   shapes throw. A definite "no" leaves the observer out of `allowedObserverIds`. A policy that
-  can't be evaluated throws. Today the policy is "every user of this deployment may read
-  `f01_engineering`"; per-department rules replace that one function.
+  can't be evaluated throws. Today the policy (`src/policy.ts`) is "every account on this
+  deployment may read every `f<NN>_` schema"; per-department rules replace that one function.
+  `DataLayerVerifier.canReadSubresources()` answers it; holding a Data Layer verifier proves the
+  observer has an account here.
 - **Do not copy Web Search here.** It reports `[]` and admits everyone, which is right only for
   public data. An empty list is committed without any check.
 - `addObserver()` / `removeObserver()` are no-ops; `getHistoricalSubresources()` returns `[]`.

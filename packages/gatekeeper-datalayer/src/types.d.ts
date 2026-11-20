@@ -20,7 +20,7 @@ export type DataLayerValue =
  *   (`count(*)::int`) when you want a number.
  * - `timestamptz` is an ISO-8601 UTC string, to the millisecond (`"2026-11-19T18:00:05.123Z"`).
  *   `timestamp` (no time zone) is ISO-8601 without the `Z`. `date` is a calendar date
- *   (`"2026-11-19"`).
+ *   (`"2026-11-19"`). `infinity`, BC dates and years past 9999 come back as Postgres writes them.
  * - `interval` is Postgres text (`"13 days 04:02:11"`). For arithmetic, convert in SQL, for example
  *   `extract(epoch from duration)::int / 86400 as days`.
  * - `json`/`jsonb` are parsed values; SQL arrays are arrays; `null` is `null`. `bytea` is not
@@ -120,7 +120,8 @@ export interface DataLayer {
    * - **One statement:** a single `SELECT`, `WITH … SELECT`, `VALUES` or `TABLE`. One trailing
    *   semicolon is fine. A second statement, a `WITH` that writes, `SELECT … INTO` and
    *   `FOR UPDATE` / `FOR SHARE` are rejected.
-   * - **Your schemas only:** schema-qualify tables (`f01_engineering.jira_issue_lifecycle`).
+   * - **Your schemas only:** schema-qualify every table (`f01_engineering.jira_issue_lifecycle`);
+   *   unqualified names don't resolve.
    *   Reading any schema `listSchemas()` does not return is rejected, `pg_catalog` and
    *   `information_schema` included: use `listTables()` and `describeTable()` for structure.
    * - **No side effects:** calls that reach outside the query, run SQL from a string, wait or take
@@ -133,8 +134,8 @@ export interface DataLayer {
    * - **Parameters:** `params` bind positionally as `$1`, `$2`, …. Always pass untrusted values as
    *   parameters, never by pasting them into `sql`.
    *
-   * A query that breaks a rule above throws an error whose message starts `Rejected:`, without
-   * running. Other failures throw the database's message.
+   * A query that breaks a rule above throws an error whose message starts `Rejected:` and returns
+   * nothing. Other failures throw the database's message.
    */
   query(sql: string, params?: DataLayerValue[]): Promise<DataLayerQueryResult>;
 }
