@@ -41,7 +41,7 @@ export class Mixpanel {
       this.requests += 1;
       const res = await fetch(url, {
         ...init,
-        headers: { Authorization: this.#auth, Accept: "application/json", ...(init.headers ?? {}) },
+        headers: { Authorization: this.#auth, Accept: "application/json", ...init.headers },
         signal: AbortSignal.timeout(90_000),
       });
       if (res.ok) return res;

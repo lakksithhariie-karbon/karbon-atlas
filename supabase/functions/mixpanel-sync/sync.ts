@@ -127,20 +127,24 @@ export async function syncDays(deps: Deps, runId: string, days: string[], source
   return result;
 }
 
+function sum(m: Record<string, number>): number {
+  return Object.values(m).reduce((s, n) => s + n, 0);
+}
+
 /**
  * Compares our per-event totals with Mixpanel's report API for each day. Today is skipped: it is still
  * filling up, and the next run after midnight checks it as yesterday.
  */
 export async function checkDays(deps: Deps, days: string[]): Promise<db.DayCheck[]> {
   const today = todayIst();
-  const finished = days.filter((d) => d < today).sort();
+  const finished = days.filter((d) => d < today).toSorted();
   if (finished.length === 0) return [];
   const from = finished[0];
   const to = finished[finished.length - 1];
   const ours = await db.ourDailyCounts(deps.sql, from, to);
   const names = new Set<string>([...await deps.mp.eventNames(), ...await db.catalogNames(deps.sql)]);
   for (const byEvent of Object.values(ours)) for (const e of Object.keys(byEvent)) names.add(e);
-  const theirs = await deps.mp.dailyCounts([...names].sort(), from, to);
+  const theirs = await deps.mp.dailyCounts([...names].toSorted(), from, to);
   const checks: db.DayCheck[] = [];
   for (const day of finished) {
     const a = ours[day] ?? {};
@@ -149,7 +153,6 @@ export async function checkDays(deps: Deps, days: string[]): Promise<db.DayCheck
     for (const e of new Set([...Object.keys(a), ...Object.keys(b)])) {
       if ((a[e] ?? 0) !== (b[e] ?? 0)) detail[e] = { ours: a[e] ?? 0, mixpanel: b[e] ?? 0 };
     }
-    const sum = (m: Record<string, number>) => Object.values(m).reduce((s, n) => s + n, 0);
     const ok = Object.keys(detail).length === 0;
     checks.push({ day, status: ok ? "match" : "mismatch", ours: sum(a), mixpanel: sum(b), detail: ok ? null : detail });
   }

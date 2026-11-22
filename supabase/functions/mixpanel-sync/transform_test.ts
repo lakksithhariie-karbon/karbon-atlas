@@ -57,7 +57,7 @@ Deno.test("allowlist drops personal data and reports unknown field names only", 
     assert(!text.includes(leaked), `${leaked} leaked`);
   }
   assertEquals(events[0].props.source, "drawer");
-  const unknown = unknownFieldRows(stats).map(([e, f]) => `${e}.${f}`).sort();
+  const unknown = unknownFieldRows(stats).map(([e, f]) => `${e}.${f}`).toSorted();
   assertEquals(unknown, ["Company Created.customerEmail", "Company Created.phoneNumber"]);
   assert(!JSON.stringify(stats).includes("buyer@"), "stats must hold names, not values");
 });
