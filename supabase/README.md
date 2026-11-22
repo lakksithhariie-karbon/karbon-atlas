@@ -14,10 +14,11 @@ the leading letter means the name never needs quoting in SQL.
 | Schema | Holds | Status |
 |---|---|---|
 | `f01_engineering` | Engineering data, starting with Jira project AiA (`SPEND`) | Jira tables and views |
-| `f02_product` | Product usage from Mixpanel (Korefi Prod), from 2026-01-01, daily totals in India time, no personal data | Tables and module map; sync not built yet |
+| `f02_product` | Product usage from Mixpanel (Korefi Prod), from 2026-01-01, daily totals in India time, no personal data | Tables, module map, and the `mixpanel-sync` function (every 2 hours, weekly 14-day refresh) |
 
 Raw source payloads and sync bookkeeping live in the private `ingest` schema. Cleaned Mixpanel events are archived, one gzipped file per India-time day, in the private Storage bucket `mixpanel-archive`. The Jira sync
-function is `supabase/functions/jira-sync/`. Its runbook and design record are internal and kept
+function is `supabase/functions/jira-sync/`; the Mixpanel sync is `supabase/functions/mixpanel-sync/`
+(its one-time history load, `backfill.ts`, runs locally). Its runbook and design record are internal and kept
 outside this public repo.
 
 ## Migrations
