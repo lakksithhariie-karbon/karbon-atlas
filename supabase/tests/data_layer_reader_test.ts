@@ -24,6 +24,8 @@ const DENIED_RELATIONS = [
 ] as const;
 
 const DENIED_SCHEMAS = ["ingest", "vault", "auth", "cron", "storage"] as const;
+/** Function schemas the Data Layer login may read. Each one comes from its own ro_<schema> role. */
+const READABLE_SCHEMAS = ["f01_engineering", "f02_product"] as const;
 
 type Row = Record<string, unknown>;
 
@@ -382,9 +384,9 @@ test("current_user is karbon_data_reader and transaction_read_only is on", async
   }
 });
 
-test("every f01_engineering relation can be read", async (db) => {
-  const relations = await relationsIn(db, "f01_engineering");
-  if (relations.length === 0) throw new Error("catalog listed no f01_engineering relations");
+for (const readableSchema of READABLE_SCHEMAS) test(`every ${readableSchema} relation can be read`, async (db) => {
+  const relations = await relationsIn(db, readableSchema);
+  if (relations.length === 0) throw new Error(`catalog listed no ${readableSchema} relations`);
   for (const relation of relations) {
     const code = await sqlstateOf(db, `select 1 from ${qualified(relation.schema, relation.name)} limit 1`);
     if (code !== null) {
@@ -403,7 +405,13 @@ test("every f01_engineering relation can be read", async (db) => {
       throw new Error(`${relation.name} has a write privilege`);
     }
   }
-  console.log(`report: f01_engineering relations readable: count=${relations.length}`);
+  console.log(`report: ${readableSchema} relations readable: count=${relations.length}`);
+});
+
+test("f02_product.data_freshness returns one row with last_successful_sync_at", async (db) => {
+  const rows = await db.unsafe("select last_successful_sync_at from f02_product.data_freshness");
+  if (rows.length !== 1) throw new Error(`f02_product.data_freshness returned ${rows.length} rows`);
+  if (!("last_successful_sync_at" in rows[0])) throw new Error("last_successful_sync_at is missing");
 });
 
 test("data_freshness returns one row with last_successful_sync_at", async (db) => {
@@ -718,7 +726,7 @@ test("report: pg_stat_activity for other roles", async (db) => {
   }
 });
 
-test("no f01_engineering function is executable by this login", async (db) => {
+for (const readableSchema of READABLE_SCHEMAS) test(`no ${readableSchema} function is executable by this login`, async (db) => {
   // Postgres grants EXECUTE on new functions to PUBLIC, and a per-schema ALTER DEFAULT PRIVILEGES
   // cannot revoke a global default. So this test is the guard: it fails as soon as a function in
   // f01_engineering becomes callable, and the function's grants get reviewed.
@@ -726,12 +734,12 @@ test("no f01_engineering function is executable by this login", async (db) => {
     `select count(*)::int as executable
      from pg_catalog.pg_proc p
      join pg_catalog.pg_namespace n on n.oid = p.pronamespace
-     where n.nspname = 'f01_engineering'
+     where n.nspname = ${quoteLiteral(readableSchema)}
        and has_function_privilege(p.oid, 'execute')`,
   );
   const executable = Number(rows[0].executable);
   if (executable !== 0) {
-    throw new Error(`${executable} f01_engineering function(s) are executable by karbon_data_reader`);
+    throw new Error(`${executable} ${readableSchema} function(s) are executable by karbon_data_reader`);
   }
 });
 
@@ -754,13 +762,13 @@ test("report: executable functions outside pg_catalog", async (db) => {
   }
 });
 
-test("no relation outside f01_engineering, the catalogs, and net is selectable", async (db) => {
+test("no relation outside the function schemas, the catalogs, and net is selectable", async (db) => {
   const rows = await db.unsafe(
     `select n.nspname as schema, c.relname as name
      from pg_catalog.pg_class c
      join pg_catalog.pg_namespace n on n.oid = c.relnamespace
      where c.relkind in ('r', 'v', 'm', 'p', 'f')
-       and n.nspname not in ('f01_engineering', 'pg_catalog', 'information_schema', 'net')
+       and n.nspname not in (${READABLE_SCHEMAS.map(quoteLiteral).join(", ")}, 'pg_catalog', 'information_schema', 'net')
        and n.nspname not like 'pg_toast%'
        and n.nspname not like 'pg_temp%'
      order by 1, 2`,
