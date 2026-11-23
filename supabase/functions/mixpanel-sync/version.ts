@@ -5,7 +5,7 @@
  *
  * Bump STAFF_RULE_VERSION when the staff rule (STAFF_EMAIL_SUBSTRINGS) changes, then rebuild.
  */
-export const TRANSFORM_VERSION = 1;
+export const TRANSFORM_VERSION = 2;
 export const STAFF_RULE_VERSION = 1;
 
 /** First IST day the pipeline keeps. */

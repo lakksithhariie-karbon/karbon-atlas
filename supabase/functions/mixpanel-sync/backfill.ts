@@ -8,12 +8,13 @@
  * Reads credentials from .secrets/.env at the repo root and never prints them. Resumable: days already
  * built by the current TRANSFORM_VERSION are skipped unless --force. Paces Raw Export at one call per
  * 70 seconds (Mixpanel allows 60 per hour), so a full year takes about six and a half hours. A rate
- * limit (HTTP 429) or a scheduled run holding the lease pauses it; it then resumes on its own.
+ * limit (HTTP 429) or a scheduled run holding the lease pauses it; it then resumes on its own. At the end it
+ * checks any day in the range that was built but never checked.
  */
 
 import { connect } from "./db.ts";
 import { Mixpanel } from "./mixpanel.ts";
-import { addDays, dayRange, runMode, todayIst } from "./sync.ts";
+import { addDays, checkDays, dayRange, runMode, todayIst } from "./sync.ts";
 import { FIRST_DAY, TRANSFORM_VERSION } from "./version.ts";
 
 function arg(name: string): string | undefined {
@@ -103,6 +104,16 @@ try {
     const minutes = rateLimited ? 15 : 2;
     log(`${rateLimited ? "Mixpanel rate limit" : "lease held by a scheduled run"}; resuming in ${minutes} minutes`);
     await new Promise((r) => setTimeout(r, minutes * 60_000));
+  }
+  // Days built but never checked (a run stopped between replacing a chunk and checking it).
+  const unchecked = (await sql`
+    select event_date::text as day from ingest.mixpanel_day_state
+    where event_date between ${from}::date and ${to}::date and check_status <> 'match'
+    order by event_date`).map((r) => r.day as string);
+  if (unchecked.length > 0) {
+    const checks = await checkDays(deps, unchecked);
+    const bad = checks.filter((c) => c.status !== "match").map((c) => c.day);
+    log(`checked ${checks.length} unchecked days: ${bad.length === 0 ? "all match" : `mismatched ${bad.join(", ")}`}`);
   }
   if (Deno.args.includes("--profiles")) {
     await runMode({ ...deps, budgetMs: 600_000 }, "backfill", { days: [], profiles: "force" });

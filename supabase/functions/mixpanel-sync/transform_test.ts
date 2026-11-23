@@ -7,6 +7,7 @@ import {
   istDay,
   type MixpanelEvent,
   parseArchive,
+  recleanArchived,
   toolByCompany,
   unknownFieldRows,
 } from "./transform.ts";
@@ -138,4 +139,31 @@ Deno.test("latest accounting tool per company", () => {
     ev("Company Switched", "a", NOON_UTC, { toCompanyId: C1, toolConnected: "Tally" }),
   ]);
   assertEquals(toolByCompany(events).get(C1), "tally");
+});
+
+Deno.test("companyUuid is the company when companyId is absent; tool and modelPredicted are dimensions", () => {
+  const { events, stats } = cleanEvents([
+    ev("Product Subscription", "a", NOON_UTC, { companyId: undefined, companyUuid: C1.toUpperCase(), productCode: "gstr" }),
+    ev("Download", "b", NOON_UTC, { tool: "Tally", type: "invoice" }),
+    ev("Txn Category Updated", "c", NOON_UTC, { modelPredicted: false }),
+  ]);
+  assertEquals(events.map((e) => e.company_id), [C1, C1, C1]);
+  assert(!("companyUuid" in events[0].props), "carried as company_id, not repeated in props");
+  assertEquals(unknownFieldRows(stats), []);
+  const facts = buildFacts("2026-11-20", events);
+  assertEquals(facts.find((f) => f.event_name === "Download")!.dims.tool, "Tally");
+  assertEquals(facts.find((f) => f.event_name === "Txn Category Updated")!.dims.model_predicted, "false");
+});
+
+Deno.test("a rebuild re-applies the current rules to archived events", () => {
+  const { events } = cleanEvents([ev("Upload", "a", NOON_UTC, { type: "bill", source: "drawer" })]);
+  // An archive written under older rules: a field no longer allowed, and text a newer rule redacts.
+  const archived = parseArchive(archiveLines("2026-11-20", events)).map((e) => ({
+    ...e, props: { ...e.props, retiredField: "x", source: "ping 9876543210" },
+  }));
+  const back = recleanArchived(archived);
+  assertEquals(back.length, 1);
+  assertEquals([back[0].user_id, back[0].company_id, back[0].insert_id, back[0].time], [U1, C1, "a", NOON_UTC]);
+  assertEquals(back[0].props, { type: "bill", source: "[redacted]" });
+  assertEquals(buildFacts("2026-11-20", recleanArchived(events)), buildFacts("2026-11-20", events), "unchanged rules change nothing");
 });

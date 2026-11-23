@@ -46,8 +46,9 @@ export class Mixpanel {
       });
       if (res.ok) return res;
       const retryable = res.status === 429 || res.status >= 500;
-      const body = (await res.text()).slice(0, 300);
-      if (!retryable || attempt >= 3) throw new Error(`Mixpanel ${url.pathname} HTTP ${res.status}: ${body}`);
+      // The body is discarded, never logged or stored: it is upstream text outside the cleaning rules.
+      await res.body?.cancel();
+      if (!retryable || attempt >= 3) throw new Error(`Mixpanel ${url.pathname} HTTP ${res.status}`);
       const wait = Math.min(Number(res.headers.get("Retry-After")) || 5 * attempt, 30);
       await new Promise((r) => setTimeout(r, wait * 1000));
     }
