@@ -55,7 +55,7 @@ const FACT_COLUMNS = [
 ];
 const FACT_TYPES: Record<string, string> = {
   event_date: "date", company_id: "uuid", user_id: "uuid", event_count: "integer", items_sum: "bigint",
-  first_at: "timestamptz", last_at: "timestamptz", transform_version: "smallint",
+  first_at: "timestamptz", last_at: "timestamptz", transform_version: "smallint", model_predicted: "boolean",
 };
 const INBOX_COLUMNS = [
   "insert_id", "event_date", "event_at", "event_name", "item_id", "company_id", "org_id", "user_id", "source",
@@ -210,11 +210,19 @@ export async function catalogNames(sql: Sql): Promise<string[]> {
   return rows.map((r) => r.event_name as string);
 }
 
-export async function dayStates(sql: Sql, fromDay: string, toDay: string): Promise<Map<string, { version: number; check: string }>> {
+export interface DayState {
+  version: number;
+  check: string;
+  replacedAt: Date;
+}
+
+export async function dayStates(sql: Sql, fromDay: string, toDay: string): Promise<Map<string, DayState>> {
   const rows = await sql`
-    select event_date::text as day, transform_version, check_status from ingest.mixpanel_day_state
+    select event_date::text as day, transform_version, check_status, replaced_at from ingest.mixpanel_day_state
     where event_date between ${fromDay}::date and ${toDay}::date`;
-  return new Map(rows.map((r) => [r.day as string, { version: Number(r.transform_version), check: r.check_status as string }]));
+  return new Map(rows.map((r) => [r.day as string, {
+    version: Number(r.transform_version), check: r.check_status as string, replacedAt: new Date(r.replaced_at),
+  }]));
 }
 
 export async function lastProfileSync(sql: Sql): Promise<Date | null> {

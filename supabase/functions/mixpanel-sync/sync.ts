@@ -18,6 +18,7 @@ import {
   istDay,
   type MixpanelEvent,
   parseArchive,
+  recleanArchived,
   safeText,
   toolByCompany,
   unknownFieldRows,
@@ -76,6 +77,9 @@ export async function syncDays(deps: Deps, runId: string, days: string[], source
   const utcDay = async (day: string): Promise<MixpanelEvent[]> => {
     const cached = utcCache.get(day);
     if (cached) return cached;
+    // From 18:30 to 24:00 UTC, today in IST is tomorrow in UTC. Mixpanel rejects a future UTC day,
+    // and it can hold no events yet.
+    if (day > new Date().toISOString().slice(0, 10)) return [];
     if (deps.exportGapMs) {
       const wait = lastExport + deps.exportGapMs - Date.now();
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
@@ -100,7 +104,7 @@ export async function syncDays(deps: Deps, runId: string, days: string[], source
       staff = [...cleaned.staffUsers];
       utcCache.delete(addDays(day, -1));
     } else {
-      events = parseArchive(await readArchive(deps.storage, day));
+      events = recleanArchived(parseArchive(await readArchive(deps.storage, day)), stats);
     }
 
     const path = source === "mixpanel" ? await writeArchive(deps.storage, day, archiveLines(day, events)) : null;
@@ -212,6 +216,9 @@ export interface RunResult {
   error?: string;
 }
 
+/** A weekly run skips days replaced this recently, so the next weekly call carries on where one stopped. */
+const WEEKLY_FRESH_MS = 6 * 3600_000;
+
 /** Days a mode covers. */
 export function daysFor(mode: Mode, opts: { from?: string; to?: string } = {}, now = Date.now()): string[] {
   const today = todayIst(now);
@@ -243,6 +250,16 @@ export async function runMode(
     if (mode === "rebuild") {
       const states = await db.dayStates(deps.sql, days[0], days[days.length - 1]);
       days = days.filter((d) => (states.get(d)?.version ?? TRANSFORM_VERSION) < TRANSFORM_VERSION);
+    }
+    if (mode === "weekly") {
+      // One call does about 110 seconds of days. The weekly job fires every 15 minutes for three hours on
+      // Sunday night; each call does the days not yet replaced and the rest return at once.
+      const states = await db.dayStates(deps.sql, days[0], days[days.length - 1]);
+      const now = Date.now();
+      days = days.filter((d) => {
+        const s = states.get(d);
+        return !s || now - s.replacedAt.getTime() > WEEKLY_FRESH_MS;
+      });
     }
     const r = await syncDays(deps, runId, days, mode === "rebuild" ? "archive" : "mixpanel");
     done = r.done;

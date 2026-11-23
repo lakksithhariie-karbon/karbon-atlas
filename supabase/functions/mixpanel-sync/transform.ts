@@ -90,6 +90,8 @@ export const DIMENSIONS = {
   stage: "stage",
   reason: "reason",
   fileType: "file_type",
+  tool: "tool",
+  modelPredicted: "model_predicted",
 } as const;
 export type DimensionColumn = (typeof DIMENSIONS)[keyof typeof DIMENSIONS];
 export const DIMENSION_COLUMNS = Object.values(DIMENSIONS) as DimensionColumn[];
@@ -97,8 +99,11 @@ export const DIMENSION_COLUMNS = Object.values(DIMENSIONS) as DimensionColumn[];
 /** Properties that must be UUIDs. Anything else becomes null and is counted. */
 export const ID_FIELDS = [
   "companyId", "company", "ucUuid", "orgId", "itemId", "fromCompanyId", "toCompanyId", "bankLineUuid",
-  "productUuid", "invitationUuid",
+  "productUuid", "invitationUuid", "companyUuid",
 ] as const;
+
+/** Properties that name the event's company, in order of preference. Carried as company_id. */
+const COMPANY_FIELDS = ["companyId", "company", "companyUuid"] as const;
 
 export const ITEM_COUNT_FIELDS = ["itemsCount", "items_count", "transactionCount"] as const;
 
@@ -212,7 +217,7 @@ export function cleanEvents(raw: Iterable<MixpanelEvent>, stats: CleanStats = em
   for (const [insertId, e] of chosen) {
     const p = e.properties;
     const user = uuidOrNull(p["$user_id"] ?? p["distinct_id"] ?? p["userId"], "user_id", stats);
-    const companyRaw = p["companyId"] ?? p["company"];
+    const companyRaw = COMPANY_FIELDS.map((f) => p[f]).find((v) => v !== undefined && v !== null && v !== "");
     const company = uuidOrNull(companyRaw, "company_id", stats);
     if (user && isStaffEmail(p["email"])) staffUsers.add(user);
 
@@ -222,7 +227,7 @@ export function cleanEvents(raw: Iterable<MixpanelEvent>, stats: CleanStats = em
         if (!KNOWN_DROPPED.has(key)) bump(stats.unknown_fields, `${e.event}\u0000${key}`);
         continue;
       }
-      if (key === "companyId" || key === "company") continue; // carried as company_id
+      if ((COMPANY_FIELDS as readonly string[]).includes(key)) continue; // carried as company_id
       if ((ID_FIELDS as readonly string[]).includes(key)) {
         const id = uuidOrNull(value, key, stats);
         if (id) props[key] = id;
@@ -302,6 +307,18 @@ export function archiveLines(day: string, events: CleanEvent[]): string {
 /** Reads an archive file back into cleaned events (for a rebuild). */
 export function parseArchive(text: string): CleanEvent[] {
   return text.split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l) as CleanEvent);
+}
+
+/**
+ * Runs archived events through the current cleaning rules again, so a rebuild after a rule change
+ * (a field removed from the allowlist, a stricter redaction) applies it to history too. The archive
+ * holds no emails, so it cannot add staff users; it can only keep or remove what is already there.
+ */
+export function recleanArchived(events: CleanEvent[], stats: CleanStats = emptyStats()): CleanEvent[] {
+  return cleanEvents(events.map((e) => ({
+    event: e.event,
+    properties: { ...e.props, $insert_id: e.insert_id, time: e.time, $user_id: e.user_id, companyId: e.company_id },
+  })), stats).events;
 }
 
 /** Latest accounting tool per company in these events (Company Switched carries toolConnected). */
